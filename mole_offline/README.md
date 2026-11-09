@@ -50,7 +50,7 @@ build.sh                  一键构建
 
 ```bash
 ORIG_APK=/path/to/base.apk ./build.sh
-# 输出 out/mole-offline-0.1.0-offline.apk
+# 输出 out/mole-offline-0.1.0-offline.apk（默认不含支线任务动画；MOLE_SKIP_SIDE_TASKS=0 打包全部资源）
 ```
 构建步骤：克隆 RecTaoMee_Hero → npm 安装 Ruffle → Maven 获取 smali/apksig → smali 汇编 dex → 生成二进制清单 → 打包（resources.arsc 不压缩、4 字节对齐）→ v2 签名 → apksig 校验。
 
@@ -91,5 +91,6 @@ ORIG_APK=/path/to/base.apk ./build.sh
 - 任务：只保存任务状态与节点，按 task_summary.xml 发放节点奖励；任务战斗/特殊任务逻辑未逐一验证；
 - 角色创建后地图上的外观要下次登录才刷新；
 - 约 390 个命令中目前实现约 60 个，其余命令客户端发出后没有应答（相关界面可能无反应）；
+- **v0.1 为了满足 500 MiB 的发送上限，没有打包编号 ≥10000 的任务动画**（`res/task/swf2/` 中 325 个文件、约 92 MB：支线/周期任务与后期地图剧情）。主线、新手流程和战斗所需资源都在。构建时设 `MOLE_SKIP_SIDE_TASKS=0` 可生成完整版（约 565 MB）；
 - 仓库缓存缺失的资源（例如 `login/CareerSelectModule.swf`、部分地图）无法补全；
 - 原 AIR 版的资源热更新、充值、网页跳转等在线功能不提供。

@@ -64,6 +64,15 @@ with zipfile.ZipFile(orig) as oz:
             z.add(info.filename, oz.read(info.filename), compress=info.compress_type == 8)
 
 count = 0; total = 0
+skipped = 0; skipped_bytes = 0
+import re
+# v0.1 size limit (delivery < 500 MiB): leave out task cutscenes of non-main-line tasks (id >= 10000).
+SKIP_SIDE_TASK_SWF = os.environ.get('MOLE_SKIP_SIDE_TASKS', '1') == '1'
+def skip(rel):
+    if SKIP_SIDE_TASK_SWF and rel.startswith('res/task/swf2/'):
+        m = re.search(r'(\d{3,6})', rel[len('res/task/swf2/'):])
+        return bool(m and int(m.group(1)) >= 10000)
+    return False
 def add_tree(base, rel_prefix, items=None):
     global count, total
     roots = items if items else sorted(os.listdir(base))
@@ -76,6 +85,9 @@ def add_tree(base, rel_prefix, items=None):
                     fp = os.path.join(dp, fn)
                     rel = os.path.relpath(fp, base).replace(os.sep, '/')
                     if fn.endswith('.map'): continue
+                    if skip(rel):
+                        global skipped, skipped_bytes
+                        skipped += 1; skipped_bytes += os.path.getsize(fp); continue
                     data = open(fp, 'rb').read(); z.add('assets/game/' + rel_prefix + rel, data); count += 1; total += len(data)
         elif os.path.isfile(p):
             data = open(p, 'rb').read(); z.add('assets/game/' + rel_prefix + item, data); count += 1; total += len(data)
@@ -83,4 +95,4 @@ def add_tree(base, rel_prefix, items=None):
 add_tree(web, '')                      # index.html, server/*.js, ruffle/* (web overrides client files of same name)
 add_tree(client, '', [i for i in CLIENT_ITEMS if os.path.exists(os.path.join(client, i))])
 z.close()
-print('assets: %d files, %.1f MB; apk %.1f MB' % (count, total / 1e6, os.path.getsize(out) / 1e6))
+print('assets: %d files, %.1f MB (skipped %d files, %.1f MB); apk %.1f MB' % (count, total / 1e6, skipped, skipped_bytes / 1e6, os.path.getsize(out) / 1e6))
