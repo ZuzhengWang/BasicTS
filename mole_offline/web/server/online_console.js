@@ -138,7 +138,7 @@
     },
     battlepets: (c, a, r) => {
       const n = parseInt(a[0]);
-      if (n !== 3 && n !== 9) return say(c, '用法: /battlepets 3（原版：主战+2辅助）或 /battlepets 9（背包宠物最多9只同时上场）。当前: ' + (r.battlePets || 3));
+      if (n !== 3 && n !== 9) return say(c, '用法: /battlepets 3（原版：主战+2辅助）或 /battlepets 9（背包宠物最多9只同时上场）。当前: ' + (r.battlePets || 9));
       r.battlePets = n; say(c, n === 9 ? '下次战斗起：主战宠物听指挥，其余最多8只背包宠物作为辅助自动战斗' : '已恢复原版：主战 + 2只辅助');
     },
     petskills: (c, a, r) => {

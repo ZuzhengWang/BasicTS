@@ -134,7 +134,10 @@
       .u16(p.attack_value).u16(p.defense_value).u16(p.speed).u16(p.spirit & 0xffff).u16(p.resume & 0xffff)
       .u16(p.hit_rate).u16(p.avoid_rate).u16(p.bisha).u16(p.fight_back).u16(p.growValue || 0)
       .u32(p.skills.length);
-    p.skills.forEach(k => w.u32(k.id).u8(k.lv || 1).u32(k.exp || 0));
+    // the pet bag shows a skill in the 天赋 (talent) slots when its exp field is non-zero
+    // (SkillsManager.checkGiftSkill); skills from the type's TalentSkill pool are sent with exp 1
+    const pool = M.talentPool(p.typeID);
+    p.skills.forEach(k => w.u32(k.id).u8(k.lv || 1).u32(pool.includes(k.id) ? Math.max(1, k.exp || 0) : (k.exp || 0)));
     w.u8(0).u8(p.reincarnationDegree || 0).u32(p.additionalGrowth || 0);
   }
   M.writePet = writePet;
@@ -171,6 +174,16 @@
     p.status = status;
     M.saveRole();
     c.reply(new ByteWriter().u32(id).u32(other));
+  });
+  // 1611 PET_LIST_CHANGE_FLAG: count + (petID, status)* — sent by the pet bag when pets are dragged between the
+  // 主战 / 辅助 / 待命 / bag slots (PetBagDataCenter.sendPetListFlag); the client then re-reads the pet list
+  on(1611, (c, rd) => {
+    const r = c.role(); const n = rd.u32(); const ch = [];
+    for (let i = 0; i < n && rd.left >= 8; i++) { const id = rd.u32(), st = rd.u32(); const p = findPet(r, id); if (p) { p.status = st; ch.push(id + ':' + st); } }
+    // only one main pet
+    const mains = pets(r).filter(p => p.status === ST.BATTLE); mains.slice(1).forEach(p => { p.status = ST.WAIT; });
+    M.saveRole(); LOG('pet flags', ch.join(' '));
+    c.reply(new ByteWriter());
   });
   // 1558 PET_FOLLOW(petID|0) -> PetFollowProtocol
   on(1558, (c, rd) => {

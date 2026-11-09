@@ -17,12 +17,13 @@
   // BattleAvatarInfo.petState (module battle.swf PetStateType)
   const PS = { NOT_A_PET: 0, OUT_BATTLE: 2, IN_BATTLE: 3, AIDE_PET: 4, BEATING_PET: 5 };
   const CAPTURE_SUCCESS = 0x8000;
-  // state2 bits for the hit that kills (module AvatarState): 2 knocked down (lies there), 4 knocked off the field
+  // state2 bits for the hit that kills (module AvatarState): 2 knocked down (lies there), 4 knocked off the field.
+  // Monsters and pets are knocked off (the client plays no fall for pets with bit 2), the role is knocked down.
   const ST2_KNOCK_DOWN = 2, ST2_RANGE_OUT = 4;
   function markKills(loops) {
     loops.forEach(l => {
       const t = l.target;
-      if (t && (l.change_hp || 0) < 0 && t.hp <= 0 && !t.downShown) { t.downShown = true; l.state2 = (l.state2 || 0) | (t.side === 1 ? ST2_RANGE_OUT : ST2_KNOCK_DOWN); }
+      if (t && (l.change_hp || 0) < 0 && t.hp <= 0 && !t.downShown) { t.downShown = true; l.state2 = (l.state2 || 0) | (t.isRole ? ST2_KNOCK_DOWN : ST2_RANGE_OUT); }
     });
     return loops;
   }   // BattleActionLoopInfo.state2 bit (AvatarState.CAPTURE_SUCCESS)
@@ -115,7 +116,11 @@
   }
 
   function writeStart(b) {
-    const w = new ByteWriter().u32(0).u32(0).u32(b.uid).u32(0);   // bgmID, isWatch, battle_userID, time_stamp
+    // battle_time_stamp must be a real time: the client also stores it as BattleStartProtocol.replayTotalRounds and
+    // its replay panel (BattleWatchRoundsPanel.playRound) only stays idle when that is > 500; with 0 it re-applied
+    // the start HP of every avatar after each round (full HP bars, nobody ever fell)
+    b.ts = b.ts || Math.floor(Date.now() / 1000);
+    const w = new ByteWriter().u32(0).u32(0).u32(b.uid).u32(b.ts);   // bgmID, isWatch, battle_userID, time_stamp
     w.u32(b.uid).u8(0).u8(0);                                     // challengeLeaderID, sneakFlag, isPK
     const own = b.players.concat(b.backup);
     w.u32(own.length); own.forEach(a => writeAvatar(w, a));
@@ -123,7 +128,7 @@
     return w;
   }
   function writeSync(b) {
-    const w = new ByteWriter().u32(0).u32(b.uid).u32(b.uid).u8(0).u8(0);
+    const w = new ByteWriter().u32(b.ts || Math.floor(Date.now() / 1000)).u32(b.uid).u32(b.uid).u8(0).u8(0);
     w.u32(b.players.length); b.players.forEach(a => writeAvatar(w, a));
     w.u32(b.monsters[0].userID).u32(b.monsters.length); b.monsters.forEach(a => writeAvatar(w, a));
     w.u32(0);   // group AI state
@@ -145,7 +150,7 @@
     const mainPos = front ? 5 : 0, rolePos = front ? 0 : 5;
     const aidePos = [rolePos + 1, rolePos + 2, rolePos + 3, rolePos + 4, mainPos + 1, mainPos + 2, mainPos + 3, mainPos + 4]
       .sort((x, y) => (Math.floor(x / 5) === Math.floor(mainPos / 5) ? 0 : 1) - (Math.floor(y / 5) === Math.floor(mainPos / 5) ? 0 : 1));
-    const maxAides = (r.battlePets || 3) >= 9 ? 8 : 2;
+    const maxAides = (r.battlePets || 9) >= 9 ? 8 : 2;   // default: full field (9 pets); /battlepets 3 = original layout
     const aides = ps.filter(p => p.status === 4).concat(maxAides > 2 ? ps.filter(p => p.status === 1 || p.status === 2) : []).slice(0, maxAides);
     const b = {
       uid: c.uid, round: 0, info: info || {}, over: false, began: false,
@@ -327,7 +332,8 @@
       const tot = m.spec.reduce((x, y) => x + y.w, 0); let k = Math.random() * tot;
       const s = m.spec.find(x => (k -= x.w) < 0) || m.spec[0];
       const act = D.actions[s.id];
-      if (act && (!act.User || act.User === '1' || act.User === '2') && skillOf(s.id, 1)) return { actionID: s.id, level: Math.max(1, Math.min(10, Math.ceil(m.level / 10))), side: 0, pos: -1 };
+      // only skills with knock-down (3) and knock-off (5) phases: a kill by a skill without them shows no fall
+      if (act && (!act.User || act.User === '1' || act.User === '2') && act.phases.includes(3) && act.phases.includes(5) && skillOf(s.id, 1)) return { actionID: s.id, level: Math.max(1, Math.min(10, Math.ceil(m.level / 10))), side: 0, pos: -1 };
     }
     return { actionID: ACT.PET_ATTACK, side: 0, pos: -1 };
   }
@@ -429,6 +435,7 @@
     acts.forEach((x, i) => writeAction(w, i + 1, x.actor, x.loops));
     c.push(1310, w);
     c.push(1311, writeSync(b));
+    LOG('round', b.round, 'hp', b.players.concat(b.monsters).map(a => a.nick + ':' + a.hp + '/' + a.hp_max).join(' '));
     // 1315 BATTLE_ROUND_START_INFO_RETURN: full sync (same body as 1311); the client adds avatars that are
     // missing and removes the ones not listed, so a pet that was called in really changes places
     // full sync once the round has been played back (the client gives no signal; sending it during the

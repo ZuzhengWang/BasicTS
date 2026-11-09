@@ -108,3 +108,30 @@ def patch_swf(src, dst, label, edits, extra_stack=0):
     out = b'CWS' + bytes([ver]) + struct.pack('<I', 8 + len(body)) + zlib.compress(bytes(body))
     os.makedirs(os.path.dirname(dst), exist_ok=True)
     open(dst, 'wb').write(out)
+
+
+def add_names(src, dst, names):
+    """Append public QNames (e.g. 'trace') to the constant pool of every ABC block of src that has
+    method bodies; writes dst. Returns nothing; look the names up again with multiname_index."""
+    data = open(src, 'rb').read()
+    sig, ver, ln, body = S.read_swf(data)
+    body = bytearray(body)
+    blocks = list(S.abc_blocks(bytes(body)))
+    for name, abcdata, pos, hdr in reversed(blocks):
+        abc = S.ABC(abcdata)
+        have = {str(abc.mname(i)) for i in range(1, len(abc.mn))}
+        new = [n for n in names if n not in have]
+        if not new: continue
+        o = abc.off
+        R = S.R(abcdata); R.p = o['str']; nstr = R.u30(); str_count_len = R.p - o['str']
+        R.p = o['mn']; nmn = R.u30(); mn_count_len = R.p - o['mn']
+        pkg = [i for i, (k, sidx) in enumerate(abc.ns) if k == 0x16 and (not sidx or abc.strings[sidx] == '')][0]
+        add_s = b''.join(u30(len(n.encode())) + n.encode() for n in new)
+        add_m = b''.join(b'\x07' + u30(pkg) + u30(nstr + i) for i, n in enumerate(new))
+        a = bytes(abcdata)
+        out = (a[:o['str']] + u30(nstr + len(new)) + a[o['str'] + str_count_len:o['str_end']] + add_s
+               + a[o['str_end']:o['mn']] + u30(nmn + len(new)) + a[o['mn'] + mn_count_len:o['mn_end']] + add_m + a[o['mn_end']:])
+        tcode, tpos, thdr, tdata = [t for t in S.iter_tags(bytes(body)) if t[1] == pos][0]
+        content = tdata[:len(tdata) - len(abcdata)] + out
+        body[pos:pos + thdr + len(tdata)] = struct.pack('<HI', (tcode << 6) | 0x3f, len(content)) + content
+    open(dst, 'wb').write(b'CWS' + bytes([ver]) + struct.pack('<I', 8 + len(body)) + zlib.compress(bytes(body)))

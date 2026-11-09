@@ -53,7 +53,7 @@
     }
     // battle actions/skills: Type (1 physical, 4 heal, 7 magic ...), TargetAmount, User
     D.actions = {};
-    if (actions) for (const a of actions.getElementsByTagName('Action')) { const x = attrs(a); D.actions[x.ID] = x; }
+    if (actions) for (const a of actions.getElementsByTagName('Action')) { const x = attrs(a); x.phases = Array.from(a.getElementsByTagName('Phase')).map(e => Number(e.getAttribute('ID'))); D.actions[x.ID] = x; }
     D.beastDoc = beast; D.petDoc = pet; D.monsterDoc = monsters; D.skillDoc = skill;
     // pets / monsters (Pet.xml "Type" entries are monster/pet species)
     D.petTypes = {};

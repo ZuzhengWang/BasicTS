@@ -14,19 +14,33 @@ import abcpatch as P, swfabc as S
 
 client, web = sys.argv[1], sys.argv[2]
 rel = 'module/com/mole2/module/battle/battle.swf'
-label = 'com.mole2.module.battle.body::FighterBody/<init>'
-body, abcs = S.load(os.path.join(client, rel))
-for n, abc, p, h in abcs:
-    for lb, mi in S.iter_methods(abc):
-        if lb != label: continue
-        ins = S.disasm(abc, abc.methods[mi]['body']['code'])
-        # the four "_bmpFrameList.push(...)" statements: from the 2nd findpropstrict _bmpFrameList up to the
-        # findproperty _bmpActionMap
-        starts = [at for at, nm, a in ins if nm == 'findpropstrict' and str(a[0]).endswith('_bmpFrameList')]
-        end = [at for at, nm, a in ins if nm == 'findproperty' and str(a[0]).endswith('_bmpActionMap')][0]
-        # keep the first push (FRAME_FIGHTER_WAIT without the front/back offset: the player's own role always
-        # uses the offset frames, so this bitmap is never shown for it) so the drawing step still runs and the
-        # READY event comes after the battle module listens for it; drop the other three
-        a = starts[1]
-        P.patch_swf(os.path.join(client, rel), os.path.join(web, rel), label, [(a, end - a, b'\x02' * (end - a))])
-        print('patched', rel, 'bytes', a, '-', end)
+src, dst = os.path.join(client, rel), os.path.join(web, rel)
+
+
+def ins_of(path, label):
+    body, abcs = S.load(path)
+    for n, abc, p, h in abcs:
+        for lb, mi in S.iter_methods(abc):
+            if lb == label:
+                return [(at, nm, str(a[0]) if a else '') for at, nm, a in S.disasm(abc, abc.methods[mi]['body']['code'])]
+    raise KeyError(label)
+
+
+def nop(path_in, label, a, b):
+    P.patch_swf(path_in, dst, label, [(a, b - a, b'\x02' * (b - a))])
+    print('patched', rel, label.split('::')[-1], 'bytes', a, '-', b)
+
+
+# 1. FighterBody: no pre-drawn poses for the role (all four _bmpFrameList.push statements)
+L1 = 'com.mole2.module.battle.body::FighterBody/<init>'
+ins = ins_of(src, L1)
+starts = [at for at, nm, a in ins if nm == 'findpropstrict' and a.endswith('_bmpFrameList')]
+end = [at for at, nm, a in ins if nm == 'findproperty' and a.endswith('_bmpActionMap')][0]
+nop(src, L1, starts[0], end)
+# 2. BattleAvatarManager.addAvatar: the role's READY event now fires inside its constructor, before the
+#    listener exists, so do not put the role into _prepareBmpActionAvatarList (battle loading would wait forever)
+L2 = 'com.mole2.module.battle.manager.avatar::BattleAvatarManager/static addAvatar'
+ins = ins_of(dst, L2)
+i = [k for k, x in enumerate(ins) if x[1] == 'findpropstrict' and x[2].endswith('_prepareBmpActionAvatarList')][0]
+j = next(k for k in range(i, len(ins)) if ins[k][1] == 'pop')
+nop(dst, L2, ins[i][0], ins[j + 1][0])

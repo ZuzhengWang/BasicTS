@@ -134,16 +134,20 @@ class ABC:
         n = r.u30(); self.ints = [0] + [r.s32() for _ in range(max(0, n - 1))]
         n = r.u30(); self.uints = [0] + [r.u30() for _ in range(max(0, n - 1))]
         n = r.u30(); self.doubles = [0.0] + [r.d64() for _ in range(max(0, n - 1))]
+        self.off = {}
+        self.off['str'] = r.p
         n = r.u30(); self.strings = [None]
         for _ in range(max(0, n - 1)):
             ln = r.u30()
             self.strings.append(r.bytes(ln).decode('utf8', 'replace'))
+        self.off['str_end'] = r.p
         n = r.u30(); self.ns = [(0, None)]
         for _ in range(max(0, n - 1)):
             k = r.u8(); self.ns.append((k, r.u30()))
         n = r.u30(); self.nssets = [[]]
         for _ in range(max(0, n - 1)):
             c = r.u30(); self.nssets.append([r.u30() for _ in range(c)])
+        self.off['mn'] = r.p
         n = r.u30(); self.mn = [None]
         for _ in range(max(0, n - 1)):
             k = r.u8()
@@ -161,6 +165,7 @@ class ABC:
                 base = r.u30(); c = r.u30(); self.mn.append(('G', base, [r.u30() for _ in range(c)]))
             else:
                 raise ValueError('mn kind %x' % k)
+        self.off['mn_end'] = r.p
         n = r.u30(); self.methods = []
         for _ in range(n):
             pc = r.u30(); ret = r.u30(); params = [r.u30() for _ in range(pc)]
