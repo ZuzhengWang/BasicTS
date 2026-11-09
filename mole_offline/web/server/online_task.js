@@ -63,13 +63,40 @@
     return got;
   }
 
+  // ---- battle conditions (res/task/xml2/<task>.xml <Step><Condition><Battle ID=beast group Count/>)
+  // The client checks a step with task.buffer monsterID == ID and monsterCount >= Count; the server fills those
+  // in through the task list of 1319 BATTLE_OVER_NOTICE after a won battle (BattleResultTaskInfo).
+  const conds = {};
+  function loadConds(taskID) {
+    if (conds[taskID]) return conds[taskID];
+    return (conds[taskID] = D.fetchXML('res/task/xml2/' + taskID + '.xml').then(doc => {
+      const list = Array.from(doc.getElementsByTagName('Battle')).map(e => ({ id: Number(e.getAttribute('ID')), count: Number(e.getAttribute('Count') || 1) })).filter(x => x.id > 0);
+      conds[taskID] = list; return list;
+    }).catch(() => (conds[taskID] = [])));
+  }
+  M.preloadTaskConds = (r) => Object.values(tasks(r)).filter(t => t.playing).forEach(t => loadConds(t.taskID));
+  // called by the battle engine on a win against beast group groupID -> BattleResultTaskInfo list
+  M.taskBattleWin = function (r, groupID) {
+    const out = [];
+    if (!groupID) return out;
+    Object.values(tasks(r)).filter(t => t.playing).forEach(t => {
+      const list = Array.isArray(conds[t.taskID]) ? conds[t.taskID] : (loadConds(t.taskID), []);
+      const c = list.find(x => x.id === groupID); if (!c) return;
+      t.battles = t.battles || {};
+      t.battles[groupID] = Math.min(c.count, (t.battles[groupID] || 0) + 1);
+      out.push({ taskID: t.taskID, nodeID: t.curNodeID || 0, monster: groupID, count: t.battles[groupID], target: c.count });
+      LOG('task', t.taskID, 'battle condition', groupID, t.battles[groupID] + '/' + c.count);
+    });
+    return out;
+  };
+
   // 1162 TASK_SUBMIT_BUFFER_AND_ACCEPT_TASK: taskID, buffer[128], dataID -> taskID, dataID, nodeID
   on(1162, (c, rd) => {
     const taskID = rd.u32(), buf = rd.bytes(128), dataID = rd.u32();
     const r = M.ensureRole(c.role()); const ts = tasks(r);
     const old = ts[taskID] || {};
     ts[taskID] = { taskID, playing: true, curNodeID: 0, finishCount: old.finishCount || 0, firstFinishTime: old.firstFinishTime || 0, optDate: now(), buffer: M.bytesToHex(buf) };
-    M.saveRole(); LOG('task accepted', taskID);
+    M.saveRole(); LOG('task accepted', taskID); loadConds(taskID);
     c.reply(new ByteWriter().u32(taskID).u32(dataID).u32(0));
   });
   // 1163 TASK_SUBMIT_BUFFER_AND_NODE: taskID, nodeID, outputSetID, buffer[128], dataID, u32

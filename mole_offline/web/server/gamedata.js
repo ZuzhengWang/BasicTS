@@ -21,6 +21,12 @@
     if (doc.getElementsByTagName('parsererror').length) console.warn('[mole] xml parse issue in', name);
     return doc;
   }
+  // any encrypted client XML by path (res/...)
+  D.fetchXML = async (path) => {
+    const r = await fetch(path); if (!r.ok) throw new Error(path + ' ' + r.status);
+    const txt = new TextDecoder('utf-8').decode(decrypt(new Uint8Array(await r.arrayBuffer()))).replace(/^\uFEFF/, '');
+    return new DOMParser().parseFromString(txt, 'text/xml');
+  };
   const attrs = (el) => { const o = {}; for (const a of el.attributes) o[a.name] = a.value; return o; };
   const num = (v, d) => (v === undefined || v === '' ? (d || 0) : Number(v));
   D.attrs = attrs; D.num = num;

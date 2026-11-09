@@ -45,6 +45,7 @@
     '/delequip 装备编号 | /wear 装备编号',
     '/addpet 宠物类型ID [等级] | /pets  宠物列表 | /delpet 宠物编号',
     '/setpet 宠物编号 属性 数值  属性: level exp growth nick status points ' + Object.keys(PET_BASE).slice(0, 5).join(' ') + ' ' + Object.keys(PET_ATTR).join(' '),
+    '/fightgrp 组ID  按怪物组开战（任务战斗，例如 19）',
     '/battlepets 3|9  上场宠物数量（3 原版，9 = 占满己方10个位置）',
     '/fight 怪物类型ID [等级] [数量]  立即开始一场战斗（方便测试捕捉）',
     '/petskills 宠物编号 | /addskill 宠物编号 技能ID [等级] | /delskill 宠物编号 技能ID',
@@ -135,6 +136,12 @@
       if (c.conn.state.battle) return say(c, '已经在战斗中');
       say(c, '开始战斗：' + D.petTypes[t].Name + ' Lv' + lv + ' x' + n);
       setTimeout(() => M.startBattle(c, Array.from({ length: n }, () => ({ typeID: t, level: lv })), { console: true }), 300);
+    },
+    fightgrp: (c, a, r) => {
+      const g = parseInt(a[0]);
+      if (c.conn.state.battle) return say(c, '已经在战斗中');
+      if (!g || !M.startGroupBattle(c, g)) return say(c, '用法: /fightgrp 怪物组ID（Beastgrp.xml，任务战斗用的组，例如 19）');
+      say(c, '开始战斗：怪物组 ' + g);
     },
     battlepets: (c, a, r) => {
       const n = parseInt(a[0]);

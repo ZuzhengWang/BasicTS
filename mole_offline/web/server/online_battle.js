@@ -516,7 +516,12 @@
     items.forEach(id => w.u32(Number(id)).u32(drops[id]));
     c.push(1318, w);
     // 1319 BattleOverNoticeProtocol
-    const o = new ByteWriter().u32(1).u32(result).u32(0).u32(0).u32(0)
+    // task battle conditions (beast group won) for tasks in progress
+    const tinfo = result === RESULT.WIN && M.taskBattleWin ? M.taskBattleWin(r, (b.info || {}).groupID) : [];
+    if (tinfo.length) M.saveRole();
+    const o = new ByteWriter().u32(1).u32(result).u32(0).u32(0).u32(tinfo.length);
+    tinfo.forEach(t => o.u32(t.taskID).u32(t.nodeID).u32(t.monster).u16(t.count).u16(t.target).u16(0).u16(0).u16(0));
+    o
       .u32(0).i32(0).u32(0).i32(0).u32(0).i32(0).i32(0)       // VipMutilExpBuffInfo
       .u32(r.autoHP || 0).u32(r.autoMP || 0);
     c.push(1319, o);
@@ -537,6 +542,9 @@
       const pt = D.petTypes[typeID];
       let lv = roleLevel || 1;
       if (pt && pt.el) { const b = pt.el.getElementsByTagName('Beast')[0]; if (b) lv = Math.max(1, Number(b.getAttribute('Lv'))); }
+      // APPROX: some task groups list only high-level entries (group 19 of the 3rd main task: 迷唇爱丝 Lv16+);
+      // the original level rule is unknown, so a group monster is at most 2 levels above the role
+      lv = Math.min(lv, Math.max(1, (roleLevel || 1) + 2));
       const slots = String(t.Position || '-1').split(/\s+/).map(Number);
       slots.forEach(pos => list.push({ typeID, level: lv, pos: pos >= 0 ? pos : undefined }));
     });
@@ -550,6 +558,15 @@
     if (!list || !list.length) { LOG('unknown beast group', groupID); return c.reply(null, 5001); }
     startBattle(c, list, { groupID, refreshID });
   });
+
+  // 1300 BATTLE_INVITE(battleID, 0, 0): visible map monsters (monsters.xml <monster groupID>) send their beast group
+  on(1300, (c, rd) => {
+    const id = rd.u32();
+    const list = groupMonsters(id, c.role().level);
+    if (!list || !list.length) { LOG('1300 not a beast group', id); return c.reply(null, 5001); }
+    startBattle(c, list, { groupID: id });
+  });
+  M.startGroupBattle = (c, id) => { const list = groupMonsters(id, c.role().level); if (list && list.length) startBattle(c, list, { groupID: id }); return !!(list && list.length); };
 
   // Hidden encounters on maps with MonsterType1=1 (Map.xml BasicValue/RandomValue in 4.5px units)
   M.walkTick = function (c, cx, cy, ex, ey) {

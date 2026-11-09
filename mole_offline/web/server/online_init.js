@@ -114,6 +114,7 @@
   on(1161, (c) => {
     const r = M.ensureRole(c.role()); r.tasks = r.tasks || {};
     if (M.repairTasks) M.repairTasks(r);
+    if (M.preloadTaskConds) M.preloadTaskConds(r);
     const all = Object.values(r.tasks);
     const playing = all.filter(t => t.playing), other = all.filter(t => !t.playing);
     const w = new ByteWriter().u32(playing.length); playing.forEach(t => writeTask(w, t, true));
