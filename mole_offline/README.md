@@ -57,10 +57,28 @@ ORIG_APK=/path/to/base.apk ./build.sh
 签名使用 `android/keystore/debug-offline.p12`（公开的调试密钥，密码 `moleoffline`），只用于让后续版本能覆盖安装，不代表任何官方身份。
 
 ## 4. 使用
-- 安装包以 7z 分卷交付：`mole-offline-full.7z.001` + `.002`（放在同一文件夹，用 ZArchiver 等打开 `.001` 解压），得到 `mole-offline-0.1.0-offline-full.apk`（含全部资源，SHA-256 `588e6c4edbbe50eeba830452ee1b3f75c55ba4fa430b4532aca0d696a2c6087e`）。
+- 安装包以 7z 分卷交付：`mole-offline-0.3.0.7z.001` + `.002`（放在同一文件夹，用 ZArchiver 等打开 `.001` 解压），得到 `mole-offline-0.3.0-offline.apk`（含全部资源，versionCode 4，SHA-256 `f6b3803522a7d4118b1384d7abbe6cc9191d571c678b030a62ddf01c6661ffd0`）。可直接覆盖安装旧版，存档保留。
 - 包名 `com.molehero.offline`，可与原版共存。
 - 首次登录：输入**大于 50000 的任意数字账号**（例如 100001）和密码，即自动在本地创建账号（原复兴版的注册是网页，离线不可用）；之后需用同一密码。客户端把 50000 以下的 ID 当作怪物/NPC，所以小号码无法使用。
 - 选择服务器 → 剧情动画 → 创建角色（名字、职业、外观）→ 进入新手地图。
+
+### 聊天框控制台（v0.3）
+在右下角聊天框输入以 `/` 开头的命令，回复以【控制台】显示在聊天框里，修改立即写入本地存档。输入 `/help` 查看全部命令。
+| 命令 | 作用 |
+|---|---|
+| `/info` | 角色信息 |
+| `/money 数量`、`/level 等级`、`/exp 经验`、`/heal` | 星豆 / 等级 / 加经验 / 回满（含宠物） |
+| `/role 属性 数值` | 改角色字段：physique strength endurance quick intelligen attr_add xiaomee level experience hp mp honor energy |
+| `/find 关键字` | 按名字查物品、装备、宠物的 ID |
+| `/additem ID [数量]` | 加物品或装备（装备 ID 也可） |
+| `/items`、`/equips` | 背包物品；装备列表（带编号） |
+| `/setequip 编号 属性 数值` | 改装备属性：hp mp atk matk def mdef speed spirit resume hit dodge crit fightback dur level；编号可写 `last` |
+| `/wear 编号`、`/delequip 编号` | 穿上 / 删除装备 |
+| `/addpet 类型ID [等级]`、`/pets`、`/delpet 编号` | 加宠物 / 宠物列表 / 删除 |
+| `/setpet 编号 属性 数值` | 改宠物：level exp growth（成长）nick status points physique strength endurance quick intelligence hp mp atk def speed spirit resume hit dodge crit fightback；编号可写 `last` |
+| `/goto 地图ID` | 下次登录出现在该地图 |
+
+已知：在 Ruffle 下，聊天框输入字母时游戏快捷键也会触发（例如会弹出个人信息面板），不影响命令执行。部分数值（星豆、穿着装备的属性）要重新登录后界面才完全刷新。
 
 ## 5. 已验证 / 近似 / 未实现
 
@@ -75,12 +93,15 @@ ORIG_APK=/path/to/base.apk ./build.sh
 7. **治疗（v0.2）**：勇士广场 → 红十字 → 护士蒂蒂拉 → 全部恢复 → 确定：HP 100→550、MP 10→55、星豆按原版公式（10 级以下免费），已存档；
 8. **服装显示（v0.2）**：修正 ClothInfo 字段（之前地图上的角色都不显示装备）；新建魔法师创建后立刻穿着法师帽和法袍，老存档剑士显示旅行者布帽/布衣；
 9. **丢弃物品（v0.2）**：背包 → 消耗品 → 丢弃确认 → 物品从存档中移除；
-10. 打包：APK 由 apksig 校验 v2 签名有效；resources.arsc 未压缩且对齐；所有 ZIP 条目本地/中央目录文件名一致；dex 可被 baksmali 解析。
+10. **控制台（v0.3）**：聊天框输入 `/help`、`/additem 130005`、`/setequip last atk 999`、`/wear last`、`/info`、`/addpet 3 10`、`/setpet last growth 300`、`/pets`、`/money 99999`、`/additem 300001 5`、`/items`，回复显示在聊天框，存档中数值正确（剑攻击 999、穿上后角色攻击 1171）；
+11. **宠物（v0.3）**：控制台加宠物后，在暗雷地图遇敌，宠物（主战）每回合出指令并参战、受伤、战后获得经验；精灵背包面板显示宠物在“主战”格、头像与属性；
+12. 打包：APK 由 apksig 校验 v2 签名有效；resources.arsc 未压缩且对齐；所有 ZIP 条目本地/中央目录文件名一致；dex 可被 baksmali 解析。
 
 ### 已实现但还没在界面里实测（v0.2）
 - 使用药品（1114，按 itemInfo.xml 的 HpUp/MpUp）、战斗中用药（1309）；
 - 商店买卖物品/装备（1108/1101/1112/1111，价格取自 itemInfo.xml / item_equip.xml）；
-- 换装（1105）。
+- 换装（1105，界面里拖装备；控制台 `/wear` 已验证）；
+- 宠物：改名、加点、设为跟随、改出战状态、治疗宠物（1552/1606/1603/1558/1551/1555）。
 
 ### 闪退诊断（v0.1.1 起）
 App 记录 Java 崩溃和 WebView 渲染进程退出，下次启动会显示诊断页（含最近日志），请截图反馈。
@@ -95,12 +116,13 @@ App 记录 Java 崩溃和 WebView 渲染进程退出，下次启动会显示诊�
 - 伤害：`max(5%攻击, 攻击 − 0.6×防御) × 随机0.9~1.1`，暴击 ×1.5，防御 ×0.5；命中 = 命中 − 闪避；
 - 怪物属性：Pet.xml 成长系数 ×(等级+1)/10，再套客户端属性系数矩阵，HP ×0.6；怪物只用普通攻击（5010）；
 - 角色基础属性：使用客户端 `UserInfoPanal1._attrFactorMatrix` 推出，魔攻/魔防/命中/闪避/暴击为估计值；
+- 宠物属性：Pet.xml 成长系数 ×(等级+1)×成长值/2500 + 2，再套角色属性系数矩阵；宠物经验与角色相同、用角色升级表；
 - 每只怪经验 `6 + 4×等级^1.5`；升级表为客户端内置真实数据；每级 4 个属性点；自动加点按职业初始属性比例；
 - 掉落：使用 Pet.xml 中对应等级的 ItemID/Rate（千分比，真实配置）；
 - 遇敌距离：Map.xml 的 BasicValue/RandomValue（×4.5 像素，配置注释给出的换算）。
 
 ### 未实现 / 不完整
-- 技能（角色只能普攻/防御/逃跑；技能按普攻处理）、宠物（捕捉、出战、宠物列表编码）、组队、PVP、交易、商店买卖、邮件内容、好友；
+- 技能（角色只能普攻/防御/逃跑；技能按普攻处理）、宠物技能与捕捉、组队、PVP、交易、邮件内容、好友；
 - 任务：只保存任务状态与节点，按 task_summary.xml 发放节点奖励；任务战斗/特殊任务逻辑未逐一验证；
 - 约 390 个命令中目前实现约 60 个，其余命令客户端发出后没有应答（相关界面可能无反应）；
 - **v0.1 为了满足 500 MiB 的发送上限，没有打包编号 ≥10000 的任务动画**（`res/task/swf2/` 中 325 个文件、约 92 MB：支线/周期任务与后期地图剧情）。主线、新手流程和战斗所需资源都在。构建时设 `MOLE_SKIP_SIDE_TASKS=0` 可生成完整版（约 565 MB）；

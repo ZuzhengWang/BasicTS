@@ -40,6 +40,16 @@
       hit: r.hit_rate, dodge: r.avoid_rate, crit: r.bisha, side: 0, isRole: true,
     };
   }
+  function petAvatar(r, p) {
+    M.recalcPet(p);
+    return {
+      userID: r.userID, petID: p.petid, petTypeID: p.typeID, posIdx: r.battleInFront ? 5 : 0, nick: p.nick, vipLevel: 0,
+      color: 0, level: p.level, hp: Math.max(1, p.hp), hp_max: p.hp_max, mp: p.mp, mp_max: p.mp_max, race: p.race, profession: 0,
+      earth: p.earth, water: p.water, fire: p.fire, wind: p.wind, clothes: [],
+      atk: p.attack_value, def: p.defense_value, matk: 0, mdef: 0, speed: p.speed, hit: p.hit_rate, dodge: p.avoid_rate, crit: p.bisha,
+      side: 0, isRole: false, isPet: true, pet: p,
+    };
+  }
   // APPROX: monster attributes = growth factor (x10 in Pet.xml) * (level + 1) / 10, then the client's factor matrix.
   function monsterAvatar(typeID, level, idx) {
     const t = D.petTypes[typeID] || { Name: '怪物' + typeID, PhysiFactor: 20, StrenFactor: 20, EndurFactor: 20, QuickFactor: 20, IntelFactor: 20, Race: 0 };
@@ -94,7 +104,8 @@
     const r = M.ensureRole(c.role());
     const b = {
       uid: c.uid, round: 0, info: info || {}, over: false, began: false,
-      players: [roleAvatar(r)],
+      players: [roleAvatar(r)].concat((M.petsOf ? M.petsOf(r) : []).filter(p => p.status === 3 && (p.hp == null || p.hp > 0)).slice(0, 1).map(p => petAvatar(r, p))),
+      cmds: {},
       monsters: monsterSpecs.slice(0, 10).map((m, i) => { const a = monsterAvatar(m.typeID, m.level, i); if (m.pos !== undefined) a.posIdx = m.pos; return a; }),
     };
     st.battle = b;
@@ -150,9 +161,9 @@
     const petID = rd.u32(), side = rd.u32(), pos = rd.i32(), actionID = rd.i32(), level = rd.u32();
     const b = c.conn.state.battle;
     if (!b || b.over) return;
-    if (petID !== 0) return;              // pets are not implemented yet (role only)
-    c.push(1313, new ByteWriter().u32(c.uid).u32(0));   // "acted" notice
-    resolveRound(c, b, { actionID, side, pos, level });
+    c.push(1313, new ByteWriter().u32(c.uid).u32(petID));   // "acted" notice
+    b.cmds[petID] = { actionID, side, pos, level };
+    if (alive(b.players).every(a => b.cmds[a.petID])) { const cmds = b.cmds; b.cmds = {}; resolveRound(c, b, cmds); }
   });
 
   // 1309 BATTLE_ROUND_USE_ITEM: side, posIdx, itemID
@@ -161,31 +172,32 @@
     const b = c.conn.state.battle;
     if (!b || b.over) return;
     c.push(1313, new ByteWriter().u32(c.uid).u32(0));
-    resolveRound(c, b, { actionID: 4, itemID, side, pos });
+    b.cmds[0] = { actionID: 4, itemID, side, pos };
+    if (alive(b.players).every(a => b.cmds[a.petID])) { const cmds = b.cmds; b.cmds = {}; resolveRound(c, b, cmds); }
   });
 
-  function resolveRound(c, b, cmd) {
+  // cmds: { [petID]: {actionID, side, pos, level, itemID?} } for every living own avatar (0 = role)
+  function resolveRound(c, b, cmds) {
     b.round++;
     const role = b.players[0];
     const acts = [];
     const defending = new Set();
     let escaped = false;
-    // order: by speed (desc)
     const order = alive(b.players.concat(b.monsters)).sort((x, y) => (y.speed + Math.random() * 5) - (x.speed + Math.random() * 5));
-    if (cmd.actionID === ACT.DEFEND) defending.add(role);
+    b.players.forEach(a => { const k = cmds[a.petID]; if (k && (k.actionID === ACT.DEFEND || k.actionID === ACT.PET_DEFEND)) defending.add(a); });
     for (const a of order) {
       if (a.hp <= 0) continue;
-      if (a === role) {
-        if (cmd.actionID === ACT.ESCAPE) {
+      if (a.side === 0) {
+        const cmd = cmds[a.petID] || { actionID: a.isPet ? ACT.PET_ATTACK : ACT.ATTACK, pos: -1 };
+        if (a === role && cmd.actionID === ACT.ESCAPE) {
           acts.push({ actor: a, loops: [{ atkType: ACT.ESCAPE, target: a }] });
           escaped = true; break;
         }
         if (cmd.itemID) {
-          // use a recovery item (itemInfo.xml HpUp/MpUp) on an own-side avatar
+          // recovery item (itemInfo.xml HpUp/MpUp) on an own-side avatar
           const tgt = b.players.find(p => p.posIdx === cmd.pos) || a;
           const it = D.items[cmd.itemID] || {};
-          const r0 = c.role();
-          if (M.takeGood(r0, cmd.itemID, 1)) {
+          if (M.takeGood(c.role(), cmd.itemID, 1)) {
             const hp = Math.max(0, Math.min(Number(it.HpUp || 0), tgt.hp_max - tgt.hp));
             const mp = Math.max(0, Math.min(Number(it.MpUp || 0), tgt.mp_max - tgt.mp));
             tgt.hp += hp; tgt.mp += mp;
@@ -193,17 +205,17 @@
           } else acts.push({ actor: a, loops: [{ atkType: ACT.NONE, target: a }] });
           continue;
         }
-        if (cmd.actionID === ACT.DEFEND || cmd.actionID === ACT.NONE) {
+        if ([ACT.DEFEND, ACT.PET_DEFEND, ACT.NONE, ACT.PET_NONE].includes(cmd.actionID)) {
           acts.push({ actor: a, loops: [{ atkType: cmd.actionID, target: a }] });
           continue;
         }
-        // normal attack (skills are treated as normal attacks for now)
-        let tgt = b.monsters.find(m => m.posIdx === cmd.pos && m.hp > 0) || pick(alive(b.monsters));
+        // attacks (skills are treated as normal attacks for now)
+        const tgt = (cmd.side === 1 && b.monsters.find(m => m.posIdx === cmd.pos && m.hp > 0)) || pick(alive(b.monsters));
         if (!tgt) break;
         const r = damage(a, tgt, false);
         tgt.hp = Math.max(0, tgt.hp - r.dmg);
-        acts.push({ actor: a, loops: [{ atkType: ACT.ATTACK, target: tgt, change_hp: -r.dmg }] });
-      } else if (!a.isRole) {
+        acts.push({ actor: a, loops: [{ atkType: a.isPet ? ACT.PET_ATTACK : ACT.ATTACK, target: tgt, change_hp: -r.dmg }] });
+      } else {
         const targets = alive(b.players);
         if (!targets.length) break;
         const tgt = pick(targets);
@@ -219,7 +231,7 @@
     c.push(1311, writeSync(b));
     if (escaped) return finish(c, b, RESULT.DRAW);
     if (!alive(b.monsters).length) return finish(c, b, RESULT.WIN);
-    if (!alive(b.players).length) return finish(c, b, RESULT.LOSE);
+    if (!role || role.hp <= 0) return finish(c, b, RESULT.LOSE);   // the role fell: battle lost
   }
 
   // level-up with the client's LevelExp table (cumulative exp). APPROX: 4 free attribute points per level.
@@ -268,6 +280,15 @@
     M.saveRole();
     LOG('battle over result', result, 'exp +' + gained, 'level', oldLv, '->', r.level, 'drops', JSON.stringify(drops));
 
+    // pets that fought: keep hp/mp, share the experience (APPROX: same amount as the role)
+    const petEntries = [];
+    b.players.filter(a => a.isPet).forEach(a => {
+      const p = a.pet; p.hp = Math.max(0, a.hp); p.mp = Math.max(0, a.mp);
+      const old = p.level; p.experience += gained; const up = M.petLevelCheck(p);
+      petEntries.push({ petid: p.petid, up, gained });
+    });
+    M.saveRole();
+    petEntries.forEach(e => c.push(1318, new ByteWriter().u32(e.petid).u32(e.up).i32(e.gained).u32(0).u16(0)));
     // 1318 BattleResultPVEProtocol (role entry): petID, changeLevel, changeExp, protectExp, remaindExp u16,
     //      skills u8, bagFull u8, items u8 + (id, count)*
     const items = Object.keys(drops);

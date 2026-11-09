@@ -82,9 +82,9 @@
   const M = G.Mole;
   // 1554 PET_GETLIST -> count + PetInfo*  (pet encoding is added in online_pet.js once pets exist)
   M.on(1554, (c) => {
-    const r = M.ensureRole(c.role()); r.pets = r.pets || [];
-    const w = new M.ByteWriter().u32(r.pets.length);
-    r.pets.forEach(p => M.writePet(w, p));
+    const r = M.ensureRole(c.role()); const list = (r.pets || []).filter(p => p.status !== 0);   // not in depot
+    const w = new M.ByteWriter().u32(list.length);
+    list.forEach(p => M.writePet(w, p));
     c.reply(w);
   });
 })(window);
