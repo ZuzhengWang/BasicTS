@@ -28,6 +28,7 @@
 <script src="server/online_role.js"></script>
 <script src="server/online_map.js"></script>
 <script src="server/online_battle.js"></script>
+<script src="server/online_task.js"></script>
 <script>
   window.RufflePlayer = window.RufflePlayer || {};
   window.RufflePlayer.config = {
@@ -50,12 +51,15 @@
 <div id="game"></div>
 <script>
   const player = window.RufflePlayer.newest().createPlayer();
+  player.openHardwareAccelerationModal = () => {};
   document.getElementById('game').appendChild(player);
   const q = new URLSearchParams(location.search);
   if (q.get('r')) window.RufflePlayer.config.preferredRenderer = q.get('r');
   if (q.get('q')) window.RufflePlayer.config.quality = q.get('q');
   window.Mole.Data.ready.finally(() => player.load({ url: 'Client.swf', parameters: {} }));
   window.__player = player;
+  // Ruffle's "hardware acceleration disabled" modal blocks touches; the game itself still runs.
+  player.openHardwareAccelerationModal = () => {};
 </script>
 </body>
 </html>

@@ -23,6 +23,8 @@ const { chromium } = require('playwright');
     if (a.waitFor) { const ok = await waitFor(a.waitFor, a.timeout || 120000); if (!ok && a.required) break; }
     await pg.waitForTimeout(a.wait || 1000);
     if (a.log) console.log('[runner]', a.log);
+    if (a.reload) { seen.length = 0; await pg.reload(); }
+    if (a.evalLog) console.log('[runner] eval', JSON.stringify(await pg.evaluate(a.evalLog)));
     if (a.click) await pg.mouse.click(a.click[0] * SC, a.click[1] * SC);
     if (a.type) await pg.keyboard.type(a.type, { delay: 50 });
     if (a.key) await pg.keyboard.press(a.key);

@@ -39,12 +39,13 @@
   // 1002 LIST_MAP_PLAYER (mapID, mapType) -> count + simpleInfo* (only yourself offline)
   on(1002, (c) => { const r = c.role(); c.reply(writeSimpleInfo(new ByteWriter().u32(1), r)); });
   // 1009 WALK: curX i16, curY i16, endX u32, endY u32, step i16, a u32, b u32, i16, time u32
-  //  -> PlayerWalkProtocol: userID, posX, posY, step u16, direction u32
+  //  -> PlayerWalkProtocol: userID, posX, posY, step u16, direction u32, type u32
   on(1009, (c, rd) => {
     const cx = rd.u16(), cy = rd.u16(), ex = rd.u32(), ey = rd.u32(), step = rd.u16(), a = rd.u32(), b = rd.u32();
     const r = c.role();
     r.posX = ex; r.posY = ey;
-    c.reply(new ByteWriter().u32(c.uid).u32(ex).u32(ey).u16(step).u32(a));
+    c.reply(new ByteWriter().u32(c.uid).u32(ex).u32(ey).u16(step).u32(a).u32(b));
+    if (G.MOLE_TRACE) LOG('walk', cx, cy, '->', ex, ey, 'step', step, a, b);
     M.walkTick && M.walkTick(c, cx, cy, ex, ey);
   });
   // 1034 RESET_WALK_INFO -> echo nothing meaningful

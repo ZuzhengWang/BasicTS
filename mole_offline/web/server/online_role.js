@@ -100,3 +100,78 @@
     c.reply(writeInitInfo(new ByteWriter(), r));
   });
 })(window);
+(function (G) {
+  'use strict';
+  const M = G.Mole;
+  const { ByteWriter, on } = M;
+  // ProtocolAnalyzer.setForMoreInfo (NewDLL): full self info incl. worn equipment details
+  function writeMoreInfo(w, r) {
+    const nick = new TextEncoder().encode(r.nick || '');
+    w.u32(r.userID).u8(nick.length).bytes(nick).u32(r.flag)
+      .u32(r.vipLevel).u32(r.vipEnergy).u32(r.vipBegin).u32(r.vipEnd)
+      .u32(r.heroCupTeamID).u32(r.color).u32(r.reg_time).u8(r.race).u8(r.professtion)
+      .u32(r.professionPharse).u32(r.honor).u32(r.xiaomee).u32(r.pkPoint).u32(r.energy).u32(r.level).u32(r.experience)
+      .u16(r.physique).u16(r.strength).u16(r.endurance).u16(r.quick).u16(r.intelligen).u16(r.attr_add)
+      .u32(r.hp).u32(r.mp).u8(r.earth).u8(r.water).u8(r.fire).u8(r.wind)
+      .u32(r.injuredLevel).u32(r.changeBodyID).u32(r.mapID).u32(r.mapType).u32(r.posX).u32(r.posY)
+      .u32(r.baseAction).u32(r.advAction).u8(r.dir).u8(r.battleInFront).u32(0).u32(0)
+      .u32(r.hp_max).u32(r.mp_max)
+      .u16(r.attackPower).u16(r.defensePower).u16(r.magicDefensePower).u16(r.speed).u16(r.spirit).u16(r.restore)
+      .u16(r.hit_rate).u16(r.avoid_rate).u16(r.bisha).u16(r.attack_back)
+      .u16(r.anti_poison).u16(r.anti_stone).u16(r.anti_sleep).u16(r.anti_curse).u16(r.anti_confusion).u16(r.anti_forget)
+      .u16(r.mgaicAttackPower || 0).zeros(30);
+    const d = r.dressed || [];
+    w.u8(d.length); d.forEach(e => M.writeEquip(w, e));
+    return w;
+  }
+  M.writeMoreInfo = writeMoreInfo;
+  // 1006 GET_MORE_USERINFO(userID)
+  on(1006, (c) => { const r = M.ensureRole(c.role()); M.recalc(r); c.reply(writeMoreInfo(new ByteWriter(), r)); });
+  // 1005 GET_SIM_USERINFO(userID) -> setForSimpleInfo
+  on(1005, (c) => c.reply(M.writeSimpleInfo(new ByteWriter(), c.role())));
+  // 1028 USER_LEVELUP push: userID, newLevel, remain_attr_point
+  M.pushLevelUp = (c, r) => c.push(1028, new ByteWriter().u32(r.userID).u32(r.level).u32(r.attr_add));
+})(window);
+(function (G) {
+  'use strict';
+  const M = G.Mole;
+  const { ByteWriter, on, Data: D } = M;
+  // 1024 AUTO_ALLOCATE_ATTRPOINTS -> AutoAttrPointSetProtocol
+  // APPROX: free points are split in proportion to the profession's initial stats (professtion.xml).
+  on(1024, (c) => {
+    const r = M.ensureRole(c.role());
+    const p = D.profs[r.professtion] || D.profs[1];
+    const keys = ['physique', 'strength', 'endurance', 'quick', 'intelligen'];
+    const w0 = [+p.Physique, +p.Strength, +p.Endurance, +p.Quick, +p.Intelligence].map(x => x || 0);
+    const sum = w0.reduce((a, b) => a + b, 0) || 5;
+    let left = r.attr_add;
+    const add = w0.map(x => Math.floor(r.attr_add * x / sum));
+    left -= add.reduce((a, b) => a + b, 0);
+    for (let i = 0; left > 0; i = (i + 1) % 5) if (w0[i] > 0 || sum === 5) { add[i]++; left--; }
+    keys.forEach((k, i) => { r[k] += add[i]; });
+    r.attr_add = 0;
+    M.recalc(r); r.hp = r.hp_max; r.mp = r.mp_max;
+    M.saveRole();
+    c.reply(new ByteWriter().u16(r.physique).u16(r.strength).u16(r.endurance).u16(r.quick).u16(r.intelligen).u16(r.attr_add)
+      .u32(r.hp_max).u32(r.mp_max).u16(r.attackPower).u16(r.defensePower).u16(r.speed).u16(r.spirit).u16(r.restore)
+      .u16(r.hit_rate).u16(r.avoid_rate).u16(r.bisha).u16(r.attack_back));
+  });
+})(window);
+(function (G) {
+  'use strict';
+  const M = G.Mole;
+  const { ByteWriter, on } = M;
+  // 1027 ALLOCATE_ATTRPOINTS: 5 x u32 points to add -> RoleSetAttrPointProtocol (6 x u16 + derived stats)
+  on(1027, (c, rd) => {
+    const r = M.ensureRole(c.role());
+    const add = [rd.u32(), rd.u32(), rd.u32(), rd.u32(), rd.u32()];
+    const total = add.reduce((a, b) => a + b, 0);
+    if (total <= r.attr_add) {
+      ['physique', 'strength', 'endurance', 'quick', 'intelligen'].forEach((k, i) => { r[k] += add[i]; });
+      r.attr_add -= total; M.recalc(r); M.saveRole();
+    }
+    c.reply(new ByteWriter().u16(r.physique).u16(r.strength).u16(r.endurance).u16(r.quick).u16(r.intelligen).u16(r.attr_add)
+      .u32(r.hp_max).u32(r.mp_max).u16(r.attackPower).u16(r.defensePower).u16(r.speed).u16(r.spirit).u16(r.restore)
+      .u16(r.hit_rate).u16(r.avoid_rate).u16(r.bisha).u16(r.attack_back));
+  });
+})(window);

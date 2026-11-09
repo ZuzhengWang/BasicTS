@@ -36,7 +36,9 @@
           let acc = db.accounts[p.userId];
           // Offline: the revival build registered on a website. Here the first login with a new
           // numeric account creates it locally with the given password.
-          if (!acc && p.userId > 0) {
+          // The client treats userID < 50000 (ClientConfig.FIGHTER_BEGIN_ID) as monsters/NPCs, so local
+          // accounts must be numbers >= 50001.
+          if (!acc && p.userId > 50000) {
             db.accounts[p.userId] = acc = { uid: p.userId, pwd, created: Date.now(), hasRole: false };
             if (db.nextUid <= p.userId) db.nextUid = p.userId + 1;
             Store.save();
@@ -86,7 +88,7 @@
   function serverList() {
     const w = new ByteWriter().u32(ONLINE.length).u32(0).u32(ONLINE.length);
     ONLINE.forEach(s => serverInfo(w, s));
-    w.u32(0);  // friend data: count 0
+    w.u32(0).u32(0);  // friend data (RelationManager.init): friends count, blacklist count
     return w;
   }
 
@@ -107,4 +109,6 @@
   // "recommended line" lookup and misc telemetry
   route(/202\.189\.23\.31\/ip\.txt/, () => new Response('10.0.0.1:1800'));
   route(/misc\.taomee\.com|\/monitor\//, () => new Response(''));
+  // news / changelog pages of the revival website (offline: empty)
+  route(/molehero\.com|61\.com\//, () => new Response('', { headers: { 'Content-Type': 'text/plain' } }));
 })(window);

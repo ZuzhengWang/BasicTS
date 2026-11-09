@@ -96,6 +96,7 @@
     const role = ctx.role();
     if (M.ensureRole) M.ensureRole(role);
     if (M.recalc && role.professtion) M.recalc(role);
+    LOG('online login: role', role.userID, role.nick || '(new)', 'Lv' + role.level, 'exp', role.experience, 'map', role.mapID, role.posX, role.posY, 'goods', JSON.stringify(role.goods || []));
     const w = writeLoginInfo(new ByteWriter(), role);
     w.u32(now());            // serverTimestamp
     w.u32(0).u32(0).i32(0);  // onLineExpireType, onLineTimeSpan, remaidDou_exp_time

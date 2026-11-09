@@ -200,6 +200,13 @@
     if (!alive(b.players).length) return finish(c, b, RESULT.LOSE);
   }
 
+  // level-up with the client's LevelExp table (cumulative exp). APPROX: 4 free attribute points per level.
+  M.levelCheck = function (r) {
+    const old = r.level;
+    while (LEVEL_EXP[r.level + 1] !== undefined && r.experience >= LEVEL_EXP[r.level + 1]) { r.level++; r.attr_add += 4; }
+    if (r.level > old) { M.recalc(r); r.hp = r.hp_max; r.mp = r.mp_max; }
+    return r.level - old;
+  };
   // APPROX experience per defeated monster
   const expFor = (lv) => Math.round(6 + 4 * Math.pow(lv, 1.5));
 
@@ -231,11 +238,8 @@
     }
     const oldLv = r.level;
     r.experience += gained;
-    while (LEVEL_EXP[r.level + 1] !== undefined && r.experience >= LEVEL_EXP[r.level + 1]) {
-      r.level++; r.attr_add += 4;          // APPROX: 4 free attribute points per level
-    }
     r.hp = Math.max(1, role.hp); r.mp = Math.max(0, role.mp);
-    if (r.level > oldLv) { M.recalc(r); r.hp = r.hp_max; r.mp = r.mp_max; }
+    M.levelCheck(r);
     Object.keys(drops).forEach(id => addItem(r, Number(id), drops[id]));
     r.battles = (r.battles || 0) + 1;
     if (result === RESULT.WIN) r.wins = (r.wins || 0) + 1;
