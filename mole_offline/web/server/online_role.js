@@ -61,6 +61,15 @@
     return e;
   }
   M.makeEquip = makeEquip;
+  // equipment level (强化等级): stats of item_equip.xml <Level Lv=n>
+  M.setEquipLevel = function (e, lv) {
+    const cfg = D.equips[e.goodID]; const L = cfg && cfg.levels && cfg.levels.find(x => Number(x.Lv) === lv);
+    if (!L) return false;
+    Object.assign(e, { levl: lv, hpMax: +L.HpMax || 0, mpMax: +L.MpMax || 0, attack: +L.Atk || 0, mattact: +L.Matk || 0, defense: +L.Def || 0,
+      mdefense: +L.Mdef || 0, speed: +L.Speed || 0, spirit: +L.Spirit || 0, resume: +L.Resume || 0, hit: +L.Hit || 0, dodge: +L.Dodge || 0,
+      crit: +L.Crit || 0, fightback: +L.FightBack || 0, cfg: L });
+    return true;
+  };
 
   // 1018 CHECK_STRING: nick[64] -> empty body on success
   on(1018, (c) => c.reply(new ByteWriter()));

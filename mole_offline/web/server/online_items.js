@@ -153,3 +153,84 @@
     c.reply(new M.ByteWriter().u32(id).u32(cnt));
   });
 })(window);
+(function (G) {
+  'use strict';
+  const M = G.Mole;
+  const { ByteWriter, on, LOG, Data: D } = M;
+  // ---- 1700 MAP_RANDOM_ITEM(randID, arg): jars, statues and other clickable map objects with random rewards.
+  // Table: client RandItemConfig (embedded XML, copied to server/data/rand_items.xml): <Rand ID Time RepeatType
+  // ItemID ItemCnt><Item ID ShareRate ItemCnt GetRate/>. One item group is drawn by ShareRate (per mille).
+  // APPROX: when the GetRate roll fails the item is still given (the client cannot show an empty result).
+  let rands = null;
+  const loadRands = fetch('server/data/rand_items.xml').then(r => r.text()).then(t => {
+    const doc = new DOMParser().parseFromString(t, 'text/xml'); rands = {};
+    for (const e of doc.getElementsByTagName('Rand')) rands[e.getAttribute('ID')] = { a: D.attrs(e), items: Array.from(e.getElementsByTagName('Item')).map(D.attrs) };
+    LOG('random item table:', Object.keys(rands).length);
+  }).catch(e => LOG('rand table', e));
+  const today = () => new Date().toISOString().slice(0, 10);
+  on(1700, (c, rd) => {
+    const id = rd.u32(); const r = M.ensureRole(c.role());
+    const R = rands && rands[id];
+    if (!R || !R.items.length) { LOG('random item: unknown id', id); return c.reply(null, 200352); }
+    const lim = Number(R.a.Time || -1);
+    r.randCounts = r.randCounts || {};
+    const k = 'r' + id, rec = r.randCounts[k] && r.randCounts[k].day === today() ? r.randCounts[k] : { day: today(), n: 0 };
+    if (lim > 0 && rec.n >= lim) return c.reply(null, 200352);          // 今日可使用的次数已达上限
+    const cost = Number(R.a.ItemID || 0), costN = Number(R.a.ItemCnt || 1);
+    if (cost && !M.takeGood(r, cost, costN)) return c.reply(null, 200159);   // 没有该物品
+    const tot = R.items.reduce((s, x) => s + Number(x.ShareRate || 1000), 0); let roll = Math.random() * tot;
+    const it = R.items.find(x => (roll -= Number(x.ShareRate || 1000)) < 0) || R.items[0];
+    const n = Math.max(1, Number(it.ItemCnt || 1)), gid = Number(it.ID);
+    M.addItem(r, gid, n);
+    rec.n++; r.randCounts[k] = rec; M.saveRole();
+    LOG('random item', id, R.a.Name || '', '->', gid, 'x' + n);
+    c.reply(new ByteWriter().u32(gid).u32(n));
+    // bag listeners are permanent: refresh the bag so the new item shows
+    const h = M.onlineHandlers;
+    if (D.equips[gid] && h[1102]) h[1102](Object.assign({}, c, { reply: (w) => c.conn.send(1102, c.uid, w, 0) }));
+    else if (h[1109]) h[1109](Object.assign({}, c, { reply: (w) => c.conn.send(1109, c.uid, w, 0) }));
+  });
+})(window);
+(function (G) {
+  'use strict';
+  const M = G.Mole;
+  const { ByteWriter, on, LOG, Data: D } = M;
+  // ---- 1131 EQUIP_MIXTURE(itemID): crafting with the recipe of res/config/Pictorialial.xml
+  //   <Materials ItemID SyntheseMeterial="id id" Count="n n"/>, price = SellPrice of the target (PictorialialXMLConfig)
+  //   -> clothID (new equipment uid, 0 for items), clothType (itemID), xiaomee, energy, combiningExp
+  let recipes = null;
+  D.ready.then(() => D.fetchXML('res/config/Pictorialial.xml')).then(doc => {
+    recipes = {}; for (const e of doc.getElementsByTagName('Materials')) recipes[e.getAttribute('ItemID')] = D.attrs(e);
+    LOG('recipes:', Object.keys(recipes).length);
+  }).catch(e => LOG('recipes', e));
+  on(1131, (c, rd) => {
+    const id = rd.u32(); const r = M.ensureRole(c.role());
+    const rc = recipes && recipes[id];
+    if (!rc) return c.reply(null, 200153);
+    const mats = String(rc.SyntheseMeterial || '').split(/\s+/).filter(Boolean).map(Number), cnt = String(rc.Count || '').split(/\s+/).map(Number);
+    const price = Number((D.equips[id] && D.equips[id].levels && D.equips[id].levels[0] && D.equips[id].levels[0].SellPrice) || (D.items[id] || {}).SalePrice || 0);
+    const have = (gid) => ((r.goods || []).find(g => g.goodID === gid) || { count: 0 }).count;
+    if (mats.some((m, i) => have(m) < (cnt[i] || 1))) return c.reply(null, 200159);   // 没有该物品
+    if (price > r.xiaomee) return c.reply(null, 200200);
+    mats.forEach((m, i) => M.takeGood(r, m, cnt[i] || 1));
+    r.xiaomee -= price;
+    let uid = 0;
+    if (D.equips[id]) { const e = M.makeEquip(r, id); r.equips.push(e); uid = e.uid; } else M.addItem(r, id, Number(rc.Number || 1) > 0 ? 1 : 1);
+    r.combiningExp = (r.combiningExp || 0) + 1;
+    M.saveRole(); LOG('crafted', id, 'cost', price);
+    c.reply(new ByteWriter().u32(uid).u32(id).u32(r.xiaomee).u32(r.energy || 100).u32(r.combiningExp));
+  });
+})(window);
+(function (G) {
+  'use strict';
+  const M = G.Mole;
+  const { ByteWriter, on } = M;
+  // 1119 EQUIP_REPAIR_SINGLE(flag, uid, itemID) -> cost, xiaomee, uid, durationMax u16, duration u16 (durability
+  // does not wear down offline, so repairing is free)
+  on(1119, (c, rd) => {
+    rd.u32(); const uid = rd.u32(); const r = M.ensureRole(c.role());
+    const e = (r.dressed || []).concat(r.equips || []).find(x => x.uid === uid);
+    if (e) e.duration = e.durationMax || 100;
+    c.reply(new ByteWriter().u32(0).u32(r.xiaomee).u32(uid).u16(e ? e.durationMax || 100 : 100).u16(e ? e.duration : 100));
+  });
+})(window);

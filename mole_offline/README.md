@@ -57,7 +57,7 @@ ORIG_APK=/path/to/base.apk ./build.sh
 签名使用 `android/keystore/debug-offline.p12`（公开的调试密钥，密码 `moleoffline`），只用于让后续版本能覆盖安装，不代表任何官方身份。
 
 ## 4. 使用
-- 安装包以 7z 分卷交付：`mole-offline-0.4.4.7z.001` + `.002`（放在同一文件夹，用 ZArchiver 等打开 `.001` 解压），得到 `mole-offline-0.4.4-offline.apk`（含全部资源，versionCode 9，SHA-256 `f6b3803522a7d4118b1384d7abbe6cc9191d571c678b030a62ddf01c6661ffd0`）。可直接覆盖安装旧版，存档保留。
+- 安装包以 7z 分卷交付：`mole-offline-0.4.5.7z.001` + `.002`（放在同一文件夹，用 ZArchiver 等打开 `.001` 解压），得到 `mole-offline-0.4.5-offline.apk`（含全部资源，versionCode 10，SHA-256 `f6b3803522a7d4118b1384d7abbe6cc9191d571c678b030a62ddf01c6661ffd0`）。可直接覆盖安装旧版，存档保留。
 - 包名 `com.molehero.offline`，可与原版共存。
 - 首次登录：输入**大于 50000 的任意数字账号**（例如 100001）和密码，即自动在本地创建账号（原复兴版的注册是网页，离线不可用）；之后需用同一密码。客户端把 50000 以下的 ID 当作怪物/NPC，所以小号码无法使用。
 - 选择服务器 → 剧情动画 → 创建角色（名字、职业、外观）→ 进入新手地图。
@@ -73,7 +73,8 @@ ORIG_APK=/path/to/base.apk ./build.sh
 | `/additem ID [数量]` | 加物品或装备（装备 ID 也可） |
 | `/items`、`/equips` | 背包物品；装备列表（带编号） |
 | `/setequip 编号 属性 数值` | 改装备属性：hp mp atk matk def mdef speed spirit resume hit dodge crit fightback dur level；编号可写 `last` |
-| `/wear 编号`、`/delequip 编号` | 穿上 / 删除装备 |
+| `/wear 编号`、`/delequip 编号`、`/upequip 编号 等级` | 穿上 / 删除 / 按原表等级强化装备 |
+| `/fightgrp 组ID` | 按怪物组开战（任务战斗） |
 | `/addpet 类型ID [等级]`、`/pets`、`/delpet 编号` | 加宠物 / 宠物列表 / 删除 |
 | `/setpet 编号 属性 数值` | 改宠物：level exp growth（成长）nick status points physique strength endurance quick intelligence hp mp atk def speed spirit resume hit dodge crit fightback；编号可写 `last` |
 | `/goto 地图ID` | 下次登录出现在该地图 |
@@ -113,6 +114,7 @@ ORIG_APK=/path/to/base.apk ./build.sh
 - 天赋技能：客户端按技能 exp≠0 判断天赋，天赋池里的技能现在显示在“天赋技能”格；
 - **任务战斗卡住（v0.4.4）**：任务步骤的条件 `<Battle ID=怪物组 Count/>`（res/task/xml2）由客户端按任务缓冲区里的怪物 ID/数量判断，这两个值由服务端在 1319 战斗结束包的任务列表里下发；之前列表为空，所以打赢后仍要求再打。现在打赢某个怪物组时，给所有进行中且需要该组的任务计数；
 - 地图上可见的怪（1300 明雷）开战；`/fightgrp 组ID` 按怪物组开战；任务怪物组等级不超过角色等级 +2（原规则未知）；
+- **v0.4.5**：地图上的罐子/石像等随机奖励（1700，奖池用客户端内置 RandItemConfig 原表，含每日次数）；装备/药剂合成（1131，配方 Pictorialial.xml，消耗材料和星豆）；装备修理（1119）；控制台 `/upequip 编号 等级` 按 item_equip.xml 的等级属性强化装备；
 - 战斗中角色装备和人分离（装备单独画在右下角、人物光身）：Ruffle 下战斗模块把待机动作预先画成位图时装备还没挂上。`tools/make_patches.py` 在构建时生成打过补丁的 `battle.swf`（放在 web/ 覆盖原文件，原文件不改），自己的角色待机改用实时动画。
 
 ### 已实现但还没在界面里实测（v0.2）

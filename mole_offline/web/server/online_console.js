@@ -42,7 +42,7 @@
     '/find 名字关键字  查物品/装备/宠物ID',
     '/items  背包物品 | /equips  背包和身上的装备',
     '/setequip 装备编号 属性 数值（编号可写 last 表示最新的装备）  属性: ' + Object.keys(EQ_ATTR).join(' '),
-    '/delequip 装备编号 | /wear 装备编号',
+    '/delequip 装备编号 | /wear 装备编号 | /upequip 装备编号 等级（按 item_equip.xml 的等级属性强化）',
     '/addpet 宠物类型ID [等级] | /pets  宠物列表 | /delpet 宠物编号',
     '/setpet 宠物编号 属性 数值  属性: level exp growth nick status points ' + Object.keys(PET_BASE).slice(0, 5).join(' ') + ' ' + Object.keys(PET_ATTR).join(' '),
     '/fightgrp 组ID  按怪物组开战（任务战斗，例如 19）',
@@ -90,6 +90,14 @@
       e[EQ_ATTR[f]] = v; if (EQ_CFG[f]) { e.cfg = Object.assign({}, e.cfg || {}); e.cfg[EQ_CFG[f]] = v; }
       if (f === 'dur') e.duration = v;
       M.recalc(r); refreshBag(c); say(c, itemName(e.goodID) + ' 的 ' + f + ' = ' + v + '（穿着的装备重新登录后完全刷新）');
+    },
+    upequip: (c, a, r) => {
+      const uid = eqUid(r, a[0]), lv = parseInt(a[1]);
+      const e = (r.dressed || []).concat(r.equips || []).find(x => x.uid === uid);
+      const lvs = e && (D.equips[e.goodID] || {}).levels || [];
+      if (!e || isNaN(lv)) return say(c, '用法: /upequip 装备编号 等级（这件可用等级: ' + (lvs.map(x => x.Lv).join(' ') || '?') + '）');
+      if (!M.setEquipLevel(e, lv)) return say(c, '这件装备没有等级 ' + lv + '，可用: ' + lvs.map(x => x.Lv).join(' '));
+      M.recalc(r); refreshBag(c); say(c, itemName(e.goodID) + ' 强化到 ' + lv + ' 级：攻' + e.attack + ' 防' + e.defense + ' HP' + e.hpMax);
     },
     delequip: (c, a, r) => {
       const uid = eqUid(r, a[0]); const n0 = (r.equips || []).length;
