@@ -31,12 +31,53 @@
     p.hp_max = o.hp_max || tmp.hp_max; p.mp_max = o.mp_max || tmp.mp_max;
     p.attack_value = o.attack_value || tmp.attackPower; p.defense_value = o.defense_value || tmp.defensePower;
     p.speed = o.speed || tmp.speed; p.spirit = o.spirit || tmp.spirit; p.resume = o.resume || tmp.restore;
+    p.matk = o.matk || tmp.mgaicAttackPower; p.mdef = o.mdef || tmp.magicDefensePower;
     p.hit_rate = o.hit_rate || 90; p.avoid_rate = o.avoid_rate || 5; p.bisha = o.bisha || 3; p.fight_back = o.fight_back || 0;
     if (p.hp == null || p.hp > p.hp_max) p.hp = p.hp_max;
     if (p.mp == null || p.mp > p.mp_max) p.mp = p.mp_max;
     return p;
   }
   M.recalcPet = recalcPet;
+
+  // ---- pet skills (Pet.xml <BaseSkill>/<TalentSkill>, Skill.xml levels)
+  // APPROX: a new pet gets its BaseSkill plus each TalentSkill with chance Percent/1000 (at most 3 talents);
+  // a skill's level follows the pet level (highest <Lv PetLevel> the pet has reached). The original server
+  // rolled talents and charged for skill levels in the skill shop; those rules are not in the client.
+  const ids = (el, tag) => { const e = el && el.getElementsByTagName(tag)[0]; return e ? { id: String(e.getAttribute('ID') || '').split(/\s+/).filter(Boolean).map(Number), pc: String(e.getAttribute('Percent') || '').split(/\s+/).map(Number) } : { id: [], pc: [] }; };
+  M.skillInfo = function (id) {
+    D.skillCache = D.skillCache || {};
+    if (D.skillCache[id] !== undefined) return D.skillCache[id];
+    let info = null;
+    if (D.skillDoc) {
+      const el = Array.from(D.skillDoc.getElementsByTagName('Skill')).find(e => e.getAttribute('ID') === String(id));
+      if (el) {
+        const job = el.getElementsByTagName('Job')[0];
+        info = { id, name: el.getAttribute('Name'), mpA: +(job && job.getAttribute('MpA') || 0), mpB: +(job && job.getAttribute('MpB') || 0),
+          lv: Array.from(el.getElementsByTagName('Lv')).map(l => ({ lv: +l.getAttribute('SkillLevel'), petLevel: +(l.getAttribute('PetLevel') || 0), desc: l.getAttribute('Desc') || '' })) };
+        if (!info.lv.length) info.lv = [{ lv: 1, petLevel: 1, desc: '' }];
+      }
+    }
+    return (D.skillCache[id] = info);
+  };
+  function syncSkillLevels(p) {
+    (p.skills || []).forEach(k => {
+      const info = M.skillInfo(k.id); if (!info) return;
+      const reach = info.lv.filter(l => !l.petLevel || l.petLevel <= p.level).map(l => l.lv);
+      k.lv = Math.max(k.fixedLv || 0, reach.length ? Math.max(...reach) : 1);
+    });
+  }
+  M.syncPetSkills = syncSkillLevels;
+  function initSkills(p) {
+    if (p.skills) return;
+    const t = D.petTypes[p.typeID]; const el = t && t.el;
+    const base = ids(el, 'BaseSkill'), tal = ids(el, 'TalentSkill');
+    const list = base.id.slice();
+    let n = 0;
+    tal.id.forEach((id, i) => { if (n < 3 && !list.includes(id) && Math.random() * 1000 < (tal.pc[i] || 0)) { list.push(id); n++; } });
+    p.skills = list.filter(id => M.skillInfo(id)).map(id => ({ id, lv: 1, exp: 0 }));
+    syncSkillLevels(p);
+  }
+  M.initPetSkills = initSkills;
 
   function newPet(r, typeID, level) {
     const t = D.petTypes[typeID];
@@ -50,13 +91,15 @@
       injury_lv: 0, status: pets(r).some(x => x.status === ST.BATTLE) ? ST.IDLE : ST.BATTLE, growValue: 100,
       reincarnationDegree: 0, additionalGrowth: 0,
     };
-    recalcPet(p); pets(r).push(p);
+    // pet bag: 1 main + 2 assist + 2 standby + 6 others; further pets go to the depot (精灵仓库)
+    if (pets(r).filter(x => x.status !== ST.DEPOT).length >= 11) p.status = ST.DEPOT;
+    initSkills(p); recalcPet(p); pets(r).push(p);
     return p;
   }
   M.newPet = newPet;
 
   function writePet(w, p) {
-    recalcPet(p);
+    recalcPet(p); initSkills(p); syncSkillLevels(p);
     const nick = new TextEncoder().encode(p.nick || '');
     w.u32(p.petid).u32(p.typeID).u8(p.race).u32(p.flag || 0).u8(nick.length).bytes(nick)
       .u32(p.level).u32(p.experience)
@@ -68,8 +111,9 @@
       .u32(p.injury_lv || 0).u8(p.status).u32(p.hp_max).u32(p.mp_max)
       .u16(p.attack_value).u16(p.defense_value).u16(p.speed).u16(p.spirit & 0xffff).u16(p.resume & 0xffff)
       .u16(p.hit_rate).u16(p.avoid_rate).u16(p.bisha).u16(p.fight_back).u16(p.growValue || 0)
-      .u32(0)                                   // skill list count (pet skills not implemented)
-      .u8(0).u8(p.reincarnationDegree || 0).u32(p.additionalGrowth || 0);
+      .u32(p.skills.length);
+    p.skills.forEach(k => w.u32(k.id).u8(k.lv || 1).u32(k.exp || 0));
+    w.u8(0).u8(p.reincarnationDegree || 0).u32(p.additionalGrowth || 0);
   }
   M.writePet = writePet;
 
@@ -143,11 +187,18 @@
     c.reply(new ByteWriter().u32(r.xiaomee).u32(0).u32(1).u32(p.petid).u32(p.hp).u32(p.hp_max).u32(p.mp).u32(p.mp_max).u32(p.injury_lv || 0));
   });
 
+  // 1550 PET_SET_AUTOBATTLE_SKILL(petID, skillID u16, level u16) -> no listener in the client
+  on(1550, (c, rd) => {
+    const p = findPet(c.role(), rd.u32()); const id = rd.u16(), lv = rd.u16();
+    if (p) { p.skillID_autoBattle = id; p.skillLevel_autoBattle = lv; M.saveRole(); }
+    c.reply(new ByteWriter());
+  });
+
   // pet level-up (APPROX: role exp table, 4 free points per level)
   M.petLevelCheck = function (p) {
     const T = M.LEVEL_EXP; const old = p.level;
     while (T[p.level + 1] !== undefined && p.experience >= T[p.level + 1]) { p.level++; p.attr_point_remaid = (p.attr_point_remaid || 0) + 4; }
-    if (p.level > old) { p.hp = null; p.mp = null; recalcPet(p); }
+    if (p.level > old) { p.hp = null; p.mp = null; recalcPet(p); syncSkillLevels(p); }
     return p.level - old;
   };
 })(window);

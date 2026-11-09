@@ -91,6 +91,8 @@
     r.quick = +p.Quick; r.intelligen = +p.Intelligence; r.attr_add = 0;
     // starting equipment of the profession, worn
     r.dressed = String(p.Clothes || '').split(/\s+/).filter(Boolean).map(id => makeEquip(r, id));
+    // the class weapon (ClothesPatch) goes to the bag: the first main quest asks the player to equip it
+    String(p.ClothesPatch || '').split(/\s+/).filter(Boolean).forEach(id => { if (!r.equips.some(e => e.goodID === Number(id))) r.equips.push(makeEquip(r, id)); });
     r.clothes = M.clothesOf(r);
     M.setFlag(r, M.FLAG.CREATE, true);
     r.mapID = M.START_MAP.id; r.posX = M.START_MAP.x; r.posY = M.START_MAP.y;

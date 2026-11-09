@@ -30,6 +30,7 @@
 
   // equipment number, or "last" for the newest one
   const eqUid = (r, a) => a === 'last' ? Math.max(0, ...(r.equips || []).concat(r.dressed || []).map(e => e.uid)) : parseInt(a);
+  const petArg = (r, v) => M.findPet(r, v === 'last' ? Math.max(0, ...M.petsOf(r).map(x => x.petid)) : parseInt(v));
   const itemName = (id) => ((D.items[id] || D.equips[id] || {}).Name) || ('#' + id);
   const HELP = [
     '可用命令（存档立即保存，部分界面需重新打开或重新登录后刷新）:',
@@ -44,6 +45,9 @@
     '/delequip 装备编号 | /wear 装备编号',
     '/addpet 宠物类型ID [等级] | /pets  宠物列表 | /delpet 宠物编号',
     '/setpet 宠物编号 属性 数值  属性: level exp growth nick status points ' + Object.keys(PET_BASE).slice(0, 5).join(' ') + ' ' + Object.keys(PET_ATTR).join(' '),
+    '/fight 怪物类型ID [等级] [数量]  立即开始一场战斗（方便测试捕捉）',
+    '/petskills 宠物编号 | /addskill 宠物编号 技能ID [等级] | /delskill 宠物编号 技能ID',
+    '捕捉：战斗中点“捕捉”，需要闪灵胶片（例如 /additem 270011 10 万用闪灵胶片I）',
     '/goto 地图ID  （下次进入地图生效，建议之后重新登录）',
   ].join('\n');
 
@@ -123,6 +127,32 @@
       p.hp = null; p.mp = null; M.recalcPet(p);
       if (r.petID === p.petid) M.setFollow(r, p);
       say(c, `[${p.petid}] ${p.nick} Lv${p.level} 成长${p.growValue} HP${p.hp_max} 攻${p.attack_value} 防${p.defense_value} 速${p.speed}`);
+    },
+    fight: (c, a, r) => {
+      const t = parseInt(a[0]), lv = Math.max(1, Math.min(200, parseInt(a[1]) || 1)), n = Math.max(1, Math.min(5, parseInt(a[2]) || 1));
+      if (!D.petTypes[t]) return say(c, '用法: /fight 怪物类型ID [等级] [数量]（ID 用 /find 名字 查，例如 /fight 3 1 = 1级小石怪）');
+      if (c.conn.state.battle) return say(c, '已经在战斗中');
+      say(c, '开始战斗：' + D.petTypes[t].Name + ' Lv' + lv + ' x' + n);
+      setTimeout(() => M.startBattle(c, Array.from({ length: n }, () => ({ typeID: t, level: lv })), { console: true }), 300);
+    },
+    petskills: (c, a, r) => {
+      const p = petArg(r, a[0]); if (!p) return say(c, '用法: /petskills 宠物编号（last = 最新）');
+      M.initPetSkills(p); M.syncPetSkills(p);
+      say(c, `[${p.petid}] ${p.nick} 技能: ` + (p.skills.map(k => `${k.id} ${(M.skillInfo(k.id) || {}).name || ''} Lv${k.lv}`).join('，') || '无'));
+    },
+    addskill: (c, a, r) => {
+      const p = petArg(r, a[0]), id = parseInt(a[1]), lv = parseInt(a[2]) || 0;
+      if (!p || !M.skillInfo(id)) return say(c, '用法: /addskill 宠物编号 技能ID [等级]（技能ID见 Skill.xml，例如 5106 狂击、7003 流火术）');
+      M.initPetSkills(p); let k = p.skills.find(x => x.id === id);
+      if (!k) { k = { id, lv: 1, exp: 0 }; p.skills.push(k); }
+      if (lv) k.fixedLv = lv; M.syncPetSkills(p);
+      say(c, `[${p.petid}] ${p.nick} 学会 ${M.skillInfo(id).name} Lv${k.lv}（重新打开精灵背包查看）`);
+    },
+    delskill: (c, a, r) => {
+      const p = petArg(r, a[0]), id = parseInt(a[1]);
+      if (!p) return say(c, '用法: /delskill 宠物编号 技能ID');
+      M.initPetSkills(p); const n = p.skills.length; p.skills = p.skills.filter(x => x.id !== id);
+      say(c, p.skills.length < n ? '已删除技能 ' + id : '这只宠物没有技能 ' + id);
     },
     goto: (c, a, r) => { const id = parseInt(a[0]); if (!D.maps[id]) return say(c, '没有这个地图: ' + a[0]); r.mapID = id; r.posX = 400; r.posY = 400; say(c, '下次登录将出现在 ' + id + ' ' + (D.maps[id].Name || '')); },
   };

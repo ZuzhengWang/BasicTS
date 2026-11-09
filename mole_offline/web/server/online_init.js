@@ -29,7 +29,7 @@
     EQ_SHORTS.forEach(k => w.u16((e[k] || 0) & 0xffff));
     w.u32(0).u32(0).u32(0).u32(0);              // crystal_attr, blessType, activated, addBlessValue
     w.u32(0);                                   // gems
-    w.u32(0).u32(0).u32(0);                     // identify flag, equipKindIdentified, stones
+    w.u32(0).u32(0);                            // equipKindIdentified (also the identify flag), stone count
   }
   M.writeEquip = writeEquip;
   function writeGood(w, g) { w.u32(g.goodID).u32(g.gridID || 0).i32(g.count); }

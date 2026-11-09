@@ -157,7 +157,11 @@ def pseudo(abc, mi, pnames=None):
         elif name == 'typeof':
             st.append('typeof ' + pop())
         elif name == 'dup':
-            v = pop(); st += [v, v]
+            v = pop()
+            if '(' in v:   # a call: evaluated once, so keep it in a temp instead of printing it twice
+                tmp = 'dup%d' % at
+                out.append('    %s = %s' % (tmp, v)); v = tmp
+            st += [v, v]
         elif name == 'swap':
             b2 = pop(); a1 = pop(); st += [b2, a1]
         elif name == 'pop':

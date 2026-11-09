@@ -27,8 +27,8 @@
 
   D.ready = (async () => {
     const t0 = Date.now();
-    const [prof, equip, map, beast, pet, monsters, skill, items] = await Promise.all(
-      ['professtion.xml', 'item_equip.xml', 'Map.xml', 'Beastgrp.xml', 'Pet.xml', 'monsters.xml', 'Skill.xml', 'itemInfo.xml'].map(n => loadXML(n).catch(e => { console.error('[mole]', e); return null; })));
+    const [prof, equip, map, beast, pet, monsters, skill, items, actions] = await Promise.all(
+      ['professtion.xml', 'item_equip.xml', 'Map.xml', 'Beastgrp.xml', 'Pet.xml', 'monsters.xml', 'Skill.xml', 'itemInfo.xml', 'BattleActionListConfig.xml'].map(n => loadXML(n).catch(e => { console.error('[mole]', e); return null; })));
     // professions
     D.profs = {};
     if (prof) for (const p of prof.getElementsByTagName('Prof')) { const a = attrs(p); D.profs[a.ID] = a; }
@@ -51,6 +51,9 @@
       const ka = attrs(k);
       for (const it of k.getElementsByTagName('Item')) { const a = attrs(it); a.kind = ka; D.items[a.ID] = a; }
     }
+    // battle actions/skills: Type (1 physical, 4 heal, 7 magic ...), TargetAmount, User
+    D.actions = {};
+    if (actions) for (const a of actions.getElementsByTagName('Action')) { const x = attrs(a); D.actions[x.ID] = x; }
     D.beastDoc = beast; D.petDoc = pet; D.monsterDoc = monsters; D.skillDoc = skill;
     // pets / monsters (Pet.xml "Type" entries are monster/pet species)
     D.petTypes = {};
