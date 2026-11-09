@@ -6,12 +6,39 @@
 # Any other host gets a 404 so the game never touches the network.
 
 .field private final am:Landroid/content/res/AssetManager;
+.field private final act:Landroid/app/Activity;
 
-.method public constructor <init>(Landroid/content/res/AssetManager;)V
-    .registers 2
+.method public constructor <init>(Landroid/content/res/AssetManager;Landroid/app/Activity;)V
+    .registers 3
     invoke-direct {p0}, Landroid/webkit/WebViewClient;-><init>()V
     iput-object p1, p0, Lcom/molehero/offline/AssetClient;->am:Landroid/content/res/AssetManager;
+    iput-object p2, p0, Lcom/molehero/offline/AssetClient;->act:Landroid/app/Activity;
     return-void
+.end method
+
+# The WebView renderer process died (crash or killed for memory). Without this override Android
+# kills the whole app ("闪退"). Record the reason and recreate the activity, which shows the report.
+.method public onRenderProcessGone(Landroid/webkit/WebView;Landroid/webkit/RenderProcessGoneDetail;)Z
+    .registers 7
+    new-instance v0, Ljava/lang/StringBuilder;
+    invoke-direct {v0}, Ljava/lang/StringBuilder;-><init>()V
+    const-string v1, "WebView 渲染进程退出, didCrash="
+    invoke-virtual {v0, v1}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+    invoke-virtual {p2}, Landroid/webkit/RenderProcessGoneDetail;->didCrash()Z
+    move-result v1
+    invoke-virtual {v0, v1}, Ljava/lang/StringBuilder;->append(Z)Ljava/lang/StringBuilder;
+    const-string v1, " (false 通常表示系统因内存不足回收了渲染进程)"
+    invoke-virtual {v0, v1}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+    invoke-virtual {v0}, Ljava/lang/StringBuilder;->toString()Ljava/lang/String;
+    move-result-object v0
+    iget-object v1, p0, Lcom/molehero/offline/AssetClient;->act:Landroid/app/Activity;
+    invoke-virtual {v1}, Landroid/app/Activity;->getFilesDir()Ljava/io/File;
+    move-result-object v2
+    const-string v3, "last_crash.txt"
+    invoke-static {v2, v3, v0}, Lcom/molehero/offline/CrashHandler;->writeText(Ljava/io/File;Ljava/lang/String;Ljava/lang/String;)V
+    invoke-virtual {v1}, Landroid/app/Activity;->recreate()V
+    const/4 v0, 0x1
+    return v0
 .end method
 
 .method private static headers()Ljava/util/Map;

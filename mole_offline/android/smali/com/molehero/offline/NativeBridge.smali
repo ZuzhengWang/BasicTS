@@ -22,7 +22,7 @@
     return-object v0
 .end method
 
-.method private static readAll(Ljava/io/File;)Ljava/lang/String;
+.method public static readAll(Ljava/io/File;)Ljava/lang/String;
     .registers 6
     invoke-virtual {p0}, Ljava/io/File;->exists()Z
     move-result v0
@@ -78,11 +78,10 @@
     return-object v1
 .end method
 
-.method public declared-synchronized save(Ljava/lang/String;)Z
+.method public save(Ljava/lang/String;)Z
     .registers 7
     .annotation runtime Landroid/webkit/JavascriptInterface;
     .end annotation
-    monitor-enter p0
     :try_start
     const-string v0, "mole_save.json.tmp"
     invoke-direct {p0, v0}, Lcom/molehero/offline/NativeBridge;->file(Ljava/lang/String;)Ljava/io/File;
@@ -114,23 +113,57 @@
     move-result v4
     :try_end
     .catch Ljava/lang/Exception; {:try_start .. :try_end} :fail
-    monitor-exit p0
     return v4
     :fail
     move-exception v0
     const-string v1, "MoleOffline"
     const-string v2, "save failed"
     invoke-static {v1, v2, v0}, Landroid/util/Log;->e(Ljava/lang/String;Ljava/lang/String;Ljava/lang/Throwable;)I
-    monitor-exit p0
     const/4 v0, 0x0
     return v0
 .end method
 
 .method public log(Ljava/lang/String;)V
-    .registers 3
+    .registers 7
     .annotation runtime Landroid/webkit/JavascriptInterface;
     .end annotation
     const-string v0, "MoleOffline"
     invoke-static {v0, p1}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I
+    :try_start
+    const-string v0, "mole_log.txt"
+    invoke-direct {p0, v0}, Lcom/molehero/offline/NativeBridge;->file(Ljava/lang/String;)Ljava/io/File;
+    move-result-object v0
+    invoke-virtual {v0}, Ljava/io/File;->length()J
+    move-result-wide v1
+    const-wide/32 v3, 0x80000
+    cmp-long v1, v1, v3
+    if-lez v1, :append
+    # > 512 KB: keep the previous file as mole_log.old.txt
+    const-string v1, "mole_log.old.txt"
+    invoke-direct {p0, v1}, Lcom/molehero/offline/NativeBridge;->file(Ljava/lang/String;)Ljava/io/File;
+    move-result-object v1
+    invoke-virtual {v1}, Ljava/io/File;->delete()Z
+    invoke-virtual {v0, v1}, Ljava/io/File;->renameTo(Ljava/io/File;)Z
+    :append
+    new-instance v1, Ljava/io/FileOutputStream;
+    const/4 v2, 0x1
+    invoke-direct {v1, v0, v2}, Ljava/io/FileOutputStream;-><init>(Ljava/io/File;Z)V
+    new-instance v2, Ljava/lang/StringBuilder;
+    invoke-direct {v2}, Ljava/lang/StringBuilder;-><init>()V
+    invoke-virtual {v2, p1}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+    const-string v3, "\n"
+    invoke-virtual {v2, v3}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+    invoke-virtual {v2}, Ljava/lang/StringBuilder;->toString()Ljava/lang/String;
+    move-result-object v2
+    const-string v3, "UTF-8"
+    invoke-virtual {v2, v3}, Ljava/lang/String;->getBytes(Ljava/lang/String;)[B
+    move-result-object v2
+    invoke-virtual {v1, v2}, Ljava/io/FileOutputStream;->write([B)V
+    invoke-virtual {v1}, Ljava/io/FileOutputStream;->close()V
+    :try_end
+    .catch Ljava/lang/Throwable; {:try_start .. :try_end} :fail
+    return-void
+    :fail
+    move-exception v0
     return-void
 .end method

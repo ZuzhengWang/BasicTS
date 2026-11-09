@@ -15,6 +15,13 @@ const { chromium } = require('playwright');
     const seed = require('fs').readFileSync(process.env.SEED_FILE, 'utf8');
     await pg.addInitScript((txt) => { try { if (!sessionStorage.getItem('seeded')) { localStorage.setItem('mole_offline_save', txt); sessionStorage.setItem('seeded', '1'); } } catch (e) {} }, seed);
   }
+  if (process.env.FAKE_NATIVE) {
+    await pg.addInitScript(() => {
+      let store = null;
+      window.MoleNative = { log: (s) => console.debug('[native] ' + s), save: (t) => { store = t; return true; }, load: () => store };
+    });
+    pg.on('console', m => { if (m.type() === 'debug') console.log('[nativelog]', m.text().slice(0, 300)); });
+  }
   if (process.env.DUMP_SAVE) pg.on('close', () => {});
   await pg.goto(url);
   const acts = actions ? JSON.parse(require('fs').readFileSync(actions, 'utf8')) : [];

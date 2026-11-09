@@ -18,6 +18,7 @@ tree = ('manifest', [
     ('uses-permission', [(A, 'name', 0x01010003, 'android.permission.INTERNET')], []),
     ('application', [
         (A, 'label', 0x01010001, '摩尔勇士离线版'),
+        (A, 'name', 0x01010003, 'com.molehero.offline.MoleApp'),
         (A, 'icon', 0x01010002, ('ref', ICON)),
         (A, 'allowBackup', 0x01010280, False),
         (A, 'hardwareAccelerated', 0x010102d3, True),

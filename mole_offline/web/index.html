@@ -10,6 +10,25 @@
   #game ruffle-player { width: 100%; height: 100%; }
 </style>
 <script>
+  // On the phone, forward errors, warnings and [mole] progress lines to files/mole_log.txt (native bridge),
+  // so a crash report can show how far the game got. Also logs JS heap use every 15 s.
+  (function () {
+    const N = window.MoleNative; if (!N || !N.log) return;
+    const t0 = Date.now();
+    const out = (lvl, args) => {
+      try {
+        let s = Array.prototype.map.call(args, a => (typeof a === 'string' ? a : (a && a.stack) || JSON.stringify(a))).join(' ');
+        s = s.replace(/%c/g, '').replace(/color: [^;]+;?|background: [^;]+;?|font-style: [^;]+;?/g, '');
+        if (lvl === 'log' && !/\[mole\]|失败|Error|error|panic|加载/.test(s)) return;
+        N.log(((Date.now() - t0) / 1000).toFixed(1) + 's ' + lvl + ' ' + s.slice(0, 400));
+      } catch (e) { }
+    };
+    ['log', 'warn', 'error'].forEach(l => { const o = console[l].bind(console); console[l] = function () { o.apply(null, arguments); out(l, arguments); }; });
+    window.addEventListener('error', e => out('error', ['window.onerror', e.message, e.filename + ':' + e.lineno]));
+    window.addEventListener('unhandledrejection', e => out('error', ['unhandledrejection', String(e.reason && (e.reason.stack || e.reason))]));
+    N.log('==== start ' + new Date().toString() + ' ' + navigator.userAgent);
+    setInterval(() => { const m = performance.memory; N.log(((Date.now() - t0) / 1000).toFixed(1) + 's mem ' + (m ? Math.round(m.usedJSHeapSize / 1048576) + '/' + Math.round(m.jsHeapSizeLimit / 1048576) + 'MB' : 'n/a')); }, 15000);
+  })();
   // Debug switches (the Android shell may override before load)
   window.MOLE_DEBUG = true;
   window.MOLE_TRACE = /trace=1/.test(location.search);
@@ -37,6 +56,7 @@
     allowNetworking: 'all', allowScriptAccess: true, warnOnUnsupportedContent: false,
     contextMenu: 'off', showSwfDownload: false, openUrlMode: 'deny',
     deviceFontRenderer: 'canvas',
+    quality: 'medium',   // lighter on phone GPUs/memory than the default 'high'
     // Flash sockets are redirected to the in-page servers (server/core.js FakeWebSocket).
     socketProxy: [
       { host: '202.189.23.31', port: 1800, proxyUrl: 'ws://mole.local/login' },
