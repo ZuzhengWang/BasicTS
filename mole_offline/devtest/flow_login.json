@@ -1,0 +1,75 @@
+[
+{
+"waitFor": "加载登录面板成功",
+"wait": 5000,
+"log": "close hw warning"
+},
+{
+"click": [
+941,
+22
+],
+"wait": 1500,
+"log": "click start"
+},
+{
+"click": [
+495,
+465
+],
+"wait": 4000
+},
+{
+"click": [
+530,
+122
+]
+},
+{
+"type": "10001",
+"wait": 300
+},
+{
+"click": [
+530,
+158
+]
+},
+{
+"type": "123456",
+"wait": 300
+},
+{
+"click": [
+562,
+282
+],
+"wait": 500
+},
+{
+"waitFor": "[mole] S->C login cmd 105",
+"wait": 4000,
+"log": "pick server"
+},
+{
+"click": [
+320,
+138
+],
+"wait": 1000
+},
+{
+"waitFor": "ActivityEnterGameMovie",
+"timeout": 240000,
+"wait": 15000,
+"shot": "SHOTDIR/s_movie.png",
+"log": "skip movie"
+},
+{
+"click": [
+722,
+54
+],
+"wait": 1000
+}
+]

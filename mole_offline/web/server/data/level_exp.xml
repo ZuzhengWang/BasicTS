@@ -1,0 +1,202 @@
+<Level>
+	<item level="1" exp="0"/>
+	<item level="2" exp="16"/>
+	<item level="3" exp="65"/>
+	<item level="4" exp="175"/>
+	<item level="5" exp="369"/>
+	<item level="6" exp="671"/>
+	<item level="7" exp="1105"/>
+	<item level="8" exp="1695"/>
+	<item level="9" exp="2465"/>
+	<item level="10" exp="3439"/>
+	<item level="11" exp="4641"/>
+	<item level="12" exp="6095"/>
+	<item level="13" exp="7825"/>
+	<item level="14" exp="9855"/>
+	<item level="15" exp="12209"/>
+	<item level="16" exp="14911"/>
+	<item level="17" exp="17985"/>
+	<item level="18" exp="21455"/>
+	<item level="19" exp="25345"/>
+	<item level="20" exp="29679"/>
+	<item level="21" exp="34481"/>
+	<item level="22" exp="39775"/>
+	<item level="23" exp="45585"/>
+	<item level="24" exp="51935"/>
+	<item level="25" exp="58849"/>
+	<item level="26" exp="66351"/>
+	<item level="27" exp="74465"/>
+	<item level="28" exp="83215"/>
+	<item level="29" exp="92625"/>
+	<item level="30" exp="102719"/>
+	<item level="31" exp="113521"/>
+	<item level="32" exp="125055"/>
+	<item level="33" exp="137345"/>
+	<item level="34" exp="150415"/>
+	<item level="35" exp="164289"/>
+	<item level="36" exp="178991"/>
+	<item level="37" exp="194545"/>
+	<item level="38" exp="210975"/>
+	<item level="39" exp="228305"/>
+	<item level="40" exp="246559"/>
+	<item level="41" exp="265761"/>
+	<item level="42" exp="285935"/>
+	<item level="43" exp="307105"/>
+	<item level="44" exp="329295"/>
+	<item level="45" exp="352529"/>
+	<item level="46" exp="376831"/>
+	<item level="47" exp="402225"/>
+	<item level="48" exp="428735"/>
+	<item level="49" exp="456385"/>
+	<item level="50" exp="485199"/>
+	<item level="51" exp="515201"/>
+	<item level="52" exp="546415"/>
+	<item level="53" exp="578865"/>
+	<item level="54" exp="612575"/>
+	<item level="55" exp="647569"/>
+	<item level="56" exp="683871"/>
+	<item level="57" exp="721505"/>
+	<item level="58" exp="760495"/>
+	<item level="59" exp="800865"/>
+	<item level="60" exp="842639"/>
+	<item level="61" exp="885841"/>
+	<item level="62" exp="930495"/>
+	<item level="63" exp="976625"/>
+	<item level="64" exp="1024255"/>
+	<item level="65" exp="1073409"/>
+	<item level="66" exp="1080367"/>
+	<item level="67" exp="1088762"/>
+	<item level="68" exp="1097386"/>
+	<item level="69" exp="1106240"/>
+	<item level="70" exp="1115329"/>
+	<item level="71" exp="1124654"/>
+	<item level="72" exp="1134220"/>
+	<item level="73" exp="1144028"/>
+	<item level="74" exp="1154083"/>
+	<item level="75" exp="1164386"/>
+	<item level="76" exp="1174942"/>
+	<item level="77" exp="1185752"/>
+	<item level="78" exp="1196821"/>
+	<item level="79" exp="1208150"/>
+	<item level="80" exp="1219744"/>
+	<item level="81" exp="1231604"/>
+	<item level="82" exp="1243735"/>
+	<item level="83" exp="1256138"/>
+	<item level="84" exp="1268818"/>
+	<item level="85" exp="1281776"/>
+	<item level="86" exp="1295017"/>
+	<item level="87" exp="1308542"/>
+	<item level="88" exp="1322356"/>
+	<item level="89" exp="1336460"/>
+	<item level="90" exp="1350859"/>
+	<item level="91" exp="1365554"/>
+	<item level="92" exp="1380550"/>
+	<item level="93" exp="1395848"/>
+	<item level="94" exp="1411453"/>
+	<item level="95" exp="1427366"/>
+	<item level="96" exp="1443592"/>
+	<item level="97" exp="1460132"/>
+	<item level="98" exp="1476991"/>
+	<item level="99" exp="1494170"/>
+	<item level="100" exp="1511674"/>
+<item level="101" exp="1530000"/>
+<item level="102" exp="1560000"/>
+<item level="103" exp="1590000"/>
+<item level="104" exp="1620000"/>
+<item level="105" exp="1650000"/>
+<item level="106" exp="1680000"/>
+<item level="107" exp="1710000"/>
+<item level="108" exp="1740000"/>
+<item level="109" exp="1770000"/>
+<item level="110" exp="1800000"/>
+<item level="111" exp="1830000"/>
+<item level="112" exp="1860000"/>
+<item level="113" exp="1890000"/>
+<item level="114" exp="1920000"/>
+<item level="115" exp="1950000"/>
+<item level="116" exp="1980000"/>
+<item level="117" exp="2010000"/>
+<item level="118" exp="2040000"/>
+<item level="119" exp="2070000"/>
+<item level="120" exp="2100000"/>
+<item level="121" exp="2130000"/>
+<item level="122" exp="2160000"/>
+<item level="123" exp="2190000"/>
+<item level="124" exp="2220000"/>
+<item level="125" exp="2250000"/>
+<item level="126" exp="2280000"/>
+<item level="127" exp="2310000"/>
+<item level="128" exp="2340000"/>
+<item level="129" exp="2370000"/>
+<item level="130" exp="2400000"/>
+<item level="131" exp="2430000"/>
+<item level="132" exp="2460000"/>
+<item level="133" exp="2490000"/>
+<item level="134" exp="2520000"/>
+<item level="135" exp="2550000"/>
+<item level="136" exp="2580000"/>
+<item level="137" exp="2610000"/>
+<item level="138" exp="2640000"/>
+<item level="139" exp="2670000"/>
+<item level="140" exp="2700000"/>
+<item level="141" exp="2730000"/>
+<item level="142" exp="2760000"/>
+<item level="143" exp="2790000"/>
+<item level="144" exp="2820000"/>
+<item level="145" exp="2850000"/>
+<item level="146" exp="2880000"/>
+<item level="147" exp="2910000"/>
+<item level="148" exp="2940000"/>
+<item level="149" exp="2970000"/>
+<item level="150" exp="3000000"/>
+<item level="151" exp="3030000"/>
+<item level="152" exp="3060000"/>
+<item level="153" exp="3090000"/>
+<item level="154" exp="3120000"/>
+<item level="155" exp="3150000"/>
+<item level="156" exp="3180000"/>
+<item level="157" exp="3210000"/>
+<item level="158" exp="3240000"/>
+<item level="159" exp="3270000"/>
+<item level="160" exp="3300000"/>
+<item level="161" exp="3330000"/>
+<item level="162" exp="3360000"/>
+<item level="163" exp="3390000"/>
+<item level="164" exp="3420000"/>
+<item level="165" exp="3450000"/>
+<item level="166" exp="3480000"/>
+<item level="167" exp="3510000"/>
+<item level="168" exp="3540000"/>
+<item level="169" exp="3570000"/>
+<item level="170" exp="3600000"/>
+<item level="171" exp="3630000"/>
+<item level="172" exp="3660000"/>
+<item level="173" exp="3690000"/>
+<item level="174" exp="3720000"/>
+<item level="175" exp="3750000"/>
+<item level="176" exp="3780000"/>
+<item level="177" exp="3810000"/>
+<item level="178" exp="3840000"/>
+<item level="179" exp="3870000"/>
+<item level="180" exp="3900000"/>
+<item level="181" exp="3930000"/>
+<item level="182" exp="3960000"/>
+<item level="183" exp="3990000"/>
+<item level="184" exp="4020000"/>
+<item level="185" exp="4050000"/>
+<item level="186" exp="4080000"/>
+<item level="187" exp="4110000"/>
+<item level="188" exp="4140000"/>
+<item level="189" exp="4170000"/>
+<item level="190" exp="4200000"/>
+<item level="191" exp="4230000"/>
+<item level="192" exp="4260000"/>
+<item level="193" exp="4290000"/>
+<item level="194" exp="4320000"/>
+<item level="195" exp="4350000"/>
+<item level="196" exp="4380000"/>
+<item level="197" exp="4410000"/>
+<item level="198" exp="4440000"/>
+<item level="199" exp="4470000"/>
+<item level="200" exp="4500000"/>
+</Level>
