@@ -45,6 +45,7 @@
     '/delequip 装备编号 | /wear 装备编号',
     '/addpet 宠物类型ID [等级] | /pets  宠物列表 | /delpet 宠物编号',
     '/setpet 宠物编号 属性 数值  属性: level exp growth nick status points ' + Object.keys(PET_BASE).slice(0, 5).join(' ') + ' ' + Object.keys(PET_ATTR).join(' '),
+    '/battlepets 3|9  上场宠物数量（3 原版，9 = 占满己方10个位置）',
     '/fight 怪物类型ID [等级] [数量]  立即开始一场战斗（方便测试捕捉）',
     '/petskills 宠物编号 | /addskill 宠物编号 技能ID [等级] | /delskill 宠物编号 技能ID',
     '捕捉：战斗中点“捕捉”，需要闪灵胶片（例如 /additem 270011 10 万用闪灵胶片I）',
@@ -134,6 +135,11 @@
       if (c.conn.state.battle) return say(c, '已经在战斗中');
       say(c, '开始战斗：' + D.petTypes[t].Name + ' Lv' + lv + ' x' + n);
       setTimeout(() => M.startBattle(c, Array.from({ length: n }, () => ({ typeID: t, level: lv })), { console: true }), 300);
+    },
+    battlepets: (c, a, r) => {
+      const n = parseInt(a[0]);
+      if (n !== 3 && n !== 9) return say(c, '用法: /battlepets 3（原版：主战+2辅助）或 /battlepets 9（背包宠物最多9只同时上场）。当前: ' + (r.battlePets || 3));
+      r.battlePets = n; say(c, n === 9 ? '下次战斗起：主战宠物听指挥，其余最多8只背包宠物作为辅助自动战斗' : '已恢复原版：主战 + 2只辅助');
     },
     petskills: (c, a, r) => {
       const p = petArg(r, a[0]); if (!p) return say(c, '用法: /petskills 宠物编号（last = 最新）');

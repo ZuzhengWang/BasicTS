@@ -16,7 +16,16 @@
     ITEM: 4, CAPTURE: 6, CALL_PET: 7, CALL_AIDE: 12, AUTO: 1000000 };
   // BattleAvatarInfo.petState (module battle.swf PetStateType)
   const PS = { NOT_A_PET: 0, OUT_BATTLE: 2, IN_BATTLE: 3, AIDE_PET: 4, BEATING_PET: 5 };
-  const CAPTURE_SUCCESS = 0x8000;   // BattleActionLoopInfo.state2 bit (AvatarState.CAPTURE_SUCCESS)
+  const CAPTURE_SUCCESS = 0x8000;
+  // state2 bits for the hit that kills (module AvatarState): 2 knocked down (lies there), 4 knocked off the field
+  const ST2_KNOCK_DOWN = 2, ST2_RANGE_OUT = 4;
+  function markKills(loops) {
+    loops.forEach(l => {
+      const t = l.target;
+      if (t && (l.change_hp || 0) < 0 && t.hp <= 0 && !t.downShown) { t.downShown = true; l.state2 = (l.state2 || 0) | (t.side === 1 ? ST2_RANGE_OUT : ST2_KNOCK_DOWN); }
+    });
+    return loops;
+  }   // BattleActionLoopInfo.state2 bit (AvatarState.CAPTURE_SUCCESS)
   const RESULT = { DRAW: 0, WIN: 1, LOSE: 2 };
 
   // ---------------------------------------------------------------- level table (embedded LevelExp xml in ClientCoreDLL)
@@ -131,14 +140,20 @@
     const ps = (M.petsOf ? M.petsOf(r) : []).filter(p => { M.recalcPet(p); return p.hp > 0; });
     const front = !!r.battleInFront;
     const main = ps.find(p => p.status === 3);
-    const aidePos = front ? [6, 7] : [1, 2];
+    // own side has 10 slots (posIdx 0-9). Default = original layout: role + main pet + 2 assist pets.
+    // r.battlePets = 9 (console /battlepets 9): up to 8 more bag pets join as assist pets and fill every slot.
+    const mainPos = front ? 5 : 0, rolePos = front ? 0 : 5;
+    const aidePos = [rolePos + 1, rolePos + 2, rolePos + 3, rolePos + 4, mainPos + 1, mainPos + 2, mainPos + 3, mainPos + 4]
+      .sort((x, y) => (Math.floor(x / 5) === Math.floor(mainPos / 5) ? 0 : 1) - (Math.floor(y / 5) === Math.floor(mainPos / 5) ? 0 : 1));
+    const maxAides = (r.battlePets || 3) >= 9 ? 8 : 2;
+    const aides = ps.filter(p => p.status === 4).concat(maxAides > 2 ? ps.filter(p => p.status === 1 || p.status === 2) : []).slice(0, maxAides);
     const b = {
       uid: c.uid, round: 0, info: info || {}, over: false, began: false,
       players: [roleAvatar(r)]
         .concat(main ? [petAvatar(r, main, PS.IN_BATTLE)] : [])
-        .concat(ps.filter(p => p.status === 4).slice(0, 2).map((p, i) => petAvatar(r, p, PS.AIDE_PET, aidePos[i]))),
+        .concat(aides.map((p, i) => petAvatar(r, p, PS.AIDE_PET, aidePos[i]))),
       // posIdx 10 = off the field (client BattleAvatarManager.removeAvatarPet); a lower posIdx makes the client swap it in
-      backup: ps.filter(p => p.status === 2).slice(0, 2).map(p => petAvatar(r, p, PS.OUT_BATTLE, 10)),
+      backup: ps.filter(p => p.status === 2 && !aides.includes(p)).slice(0, 2).map(p => petAvatar(r, p, PS.OUT_BATTLE, 10)),
       fought: new Set(), captured: [],
       cmds: {},
       monsters: monsterSpecs.slice(0, 10).map((m, i) => { const a = monsterAvatar(m.typeID, m.level, i); if (m.pos !== undefined) a.posIdx = m.pos; return a; }),
@@ -399,13 +414,13 @@
         } else if ([ACT.DEFEND, ACT.PET_DEFEND, ACT.NONE, ACT.PET_NONE].includes(cmd.actionID)) {
           acts.push({ actor: a, loops: [{ atkType: cmd.actionID, target: a }] });
         } else {
-          const loops = doAttack(a, cmd, b.monsters, b.players, defending);
+          const loops = markKills(doAttack(a, cmd, b.monsters, b.players, defending));
           if (!loops.length) break;
           acts.push({ actor: a, loops });
         }
       } else {
         if (!alive(b.players).length) break;
-        const loops = doAttack(a, monsterCmd(a), b.players.filter(x => !(x.petState === PS.AIDE_PET && b.aidesAway)), b.monsters, defending);
+        const loops = markKills(doAttack(a, monsterCmd(a), b.players.filter(x => !(x.petState === PS.AIDE_PET && b.aidesAway)), b.monsters, defending));
         if (loops.length) acts.push({ actor: a, loops });
       }
       if (!alive(b.monsters).length || !alive(b.players).length) break;

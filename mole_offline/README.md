@@ -57,7 +57,7 @@ ORIG_APK=/path/to/base.apk ./build.sh
 签名使用 `android/keystore/debug-offline.p12`（公开的调试密钥，密码 `moleoffline`），只用于让后续版本能覆盖安装，不代表任何官方身份。
 
 ## 4. 使用
-- 安装包以 7z 分卷交付：`mole-offline-0.3.0.7z.001` + `.002`（放在同一文件夹，用 ZArchiver 等打开 `.001` 解压），得到 `mole-offline-0.3.0-offline.apk`（含全部资源，versionCode 4，SHA-256 `f6b3803522a7d4118b1384d7abbe6cc9191d571c678b030a62ddf01c6661ffd0`）。可直接覆盖安装旧版，存档保留。
+- 安装包以 7z 分卷交付：`mole-offline-0.4.1.7z.001` + `.002`（放在同一文件夹，用 ZArchiver 等打开 `.001` 解压），得到 `mole-offline-0.4.1-offline.apk`（含全部资源，versionCode 6，SHA-256 `f6b3803522a7d4118b1384d7abbe6cc9191d571c678b030a62ddf01c6661ffd0`）。可直接覆盖安装旧版，存档保留。
 - 包名 `com.molehero.offline`，可与原版共存。
 - 首次登录：输入**大于 50000 的任意数字账号**（例如 100001）和密码，即自动在本地创建账号（原复兴版的注册是网页，离线不可用）；之后需用同一密码。客户端把 50000 以下的 ID 当作怪物/NPC，所以小号码无法使用。
 - 选择服务器 → 剧情动画 → 创建角色（名字、职业、外观）→ 进入新手地图。
@@ -77,6 +77,9 @@ ORIG_APK=/path/to/base.apk ./build.sh
 | `/addpet 类型ID [等级]`、`/pets`、`/delpet 编号` | 加宠物 / 宠物列表 / 删除 |
 | `/setpet 编号 属性 数值` | 改宠物：level exp growth（成长）nick status points physique strength endurance quick intelligence hp mp atk def speed spirit resume hit dodge crit fightback；编号可写 `last` |
 | `/goto 地图ID` | 下次登录出现在该地图 |
+| `/fight 怪物ID [等级] [数量]` | 立即开始一场战斗（测试捕捉、技能） |
+| `/petskills 编号`、`/addskill 编号 技能ID [等级]`、`/delskill 编号 技能ID` | 查看 / 添加 / 删除宠物技能 |
+| `/battlepets 3` 或 `/battlepets 9` | 上场宠物：3 = 原版（主战 + 2 辅助），9 = 主战 + 最多 8 只背包宠物，占满己方 10 个位置 |
 
 已知：在 Ruffle 下，聊天框输入字母时游戏快捷键也会触发（例如会弹出个人信息面板），不影响命令执行。部分数值（星豆、穿着装备的属性）要重新登录后界面才完全刷新。
 
@@ -97,6 +100,15 @@ ORIG_APK=/path/to/base.apk ./build.sh
 11. **宠物（v0.3）**：控制台加宠物后，在暗雷地图遇敌，宠物（主战）每回合出指令并参战、受伤、战后获得经验；精灵背包面板显示宠物在“主战”格、头像与属性；
 12. 打包：APK 由 apksig 校验 v2 签名有效；resources.arsc 未压缩且对齐；所有 ZIP 条目本地/中央目录文件名一致；dex 可被 baksmali 解析。
 
+### v0.4（浏览器中已验证）
+- 装备列表编码修正：之前每件装备多写 4 字节，第二件起全部错位（个人秀里装备“虚”、提示职业不符的原因）；新角色背包里有职业武器；
+- 战斗：主战宠物 + 2 只辅助宠物同时上场；待命宠物可“召唤”换上（1339 + 1315 全量同步）；`/battlepets 9` 时最多 9 只宠物；
+- 捕捉：战斗中“抓捕” → 选闪灵胶片（kind 27，需种族匹配），成功率取 Pet.xml `Catch` + `SpecCatch`，客户端显示“签订契约啦”，宠物进入精灵背包；
+- 宠物技能：Pet.xml BaseSkill + 天赋池 TalentSkill；技能效果按 BattleActionListConfig 类型和 Skill.xml 描述中的倍率/基础伤害；野怪会用 SpecSkill；
+- 击杀：被打死的怪物被击飞并移除（state2 位），自己方倒下；
+- 任务：完成判定改用 task_summary.xml 的 `IsEnd` 节点（之前用“最后一个节点”，完成的任务重启后又回到任务书），老存档自动修复；
+- 宠物技能商店 1601 学习、1605 删除、1607 解锁天赋。
+
 ### 已实现但还没在界面里实测（v0.2）
 - 使用药品（1114，按 itemInfo.xml 的 HpUp/MpUp）、战斗中用药（1309）；
 - 商店买卖物品/装备（1108/1101/1112/1111，价格取自 itemInfo.xml / item_equip.xml）；
@@ -116,6 +128,7 @@ App 记录 Java 崩溃和 WebView 渲染进程退出，下次启动会显示诊�
 - 伤害：`max(5%攻击, 攻击 − 0.6×防御) × 随机0.9~1.1`，暴击 ×1.5，防御 ×0.5；命中 = 命中 − 闪避；
 - 怪物属性：Pet.xml 成长系数 ×(等级+1)/10，再套客户端属性系数矩阵，HP ×0.6；怪物只用普通攻击（5010）；
 - 角色基础属性：使用客户端 `UserInfoPanal1._attrFactorMatrix` 推出，魔攻/魔防/命中/闪避/暴击为估计值；
+- 天赋：每只新宠物从天赋池按权重抽 1~3 个（至少 1 个），原服抽取规则未知；技能等级随宠物等级提升；技能伤害公式为估算；召唤换宠的同步时机为估算（回合动画后约 2.5 秒+每个动作 1.5 秒，或下一回合第一个指令时）；
 - 宠物属性：Pet.xml 成长系数 ×(等级+1)×成长值/2500 + 2，再套角色属性系数矩阵；宠物经验与角色相同、用角色升级表；
 - 每只怪经验 `6 + 4×等级^1.5`；升级表为客户端内置真实数据；每级 4 个属性点；自动加点按职业初始属性比例；
 - 掉落：使用 Pet.xml 中对应等级的 ItemID/Rate（千分比，真实配置）；

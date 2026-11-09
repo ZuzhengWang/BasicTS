@@ -27,6 +27,21 @@
 
   const now = () => Math.floor(Date.now() / 1000);
   function tasks(r) { r.tasks = r.tasks || {}; return r.tasks; }
+  // the client ends a task at the node marked IsEnd (TaskUtils.readBoolean(node, 'IsEnd')); fall back to the last node
+  function isEndNode(taskID, nodeID) {
+    const s = summary && summary[taskID]; if (!s || !s.nodes.length) return false;
+    const n = s.nodes.find(x => String(x.getAttribute('ID')) === String(nodeID));
+    if (!n) return false;
+    const v = String(n.getAttribute('IsEnd') || '').toLowerCase();
+    if (s.nodes.some(x => x.hasAttribute('IsEnd'))) return v === '1' || v === 'true';
+    return s.nodes[s.nodes.length - 1] === n;
+  }
+  // older saves: tasks whose last submitted node was an end node but were left "playing"
+  M.repairTasks = function (r) {
+    Object.values(tasks(r)).forEach(t => {
+      if (t.playing && t.curNodeID && isEndNode(t.taskID, t.curNodeID)) { t.playing = false; t.state = 1; t.finishCount = Math.max(1, t.finishCount || 0); if (!t.firstFinishTime) t.firstFinishTime = now(); }
+    });
+  };
 
   // OutType: 1 role attribute (ItemId 1 xiaomee, 2/3 exp), 2 item, 4 equipment; others recorded only
   function grantNodeOutput(r, taskID, nodeID, setID) {
@@ -66,7 +81,7 @@
     const got = grantNodeOutput(r, taskID, nodeID, setID);
     t.curNodeID = nodeID; t.buffer = M.bytesToHex(buf); t.optDate = now();
     const s = summary && summary[taskID];
-    const last = s && s.nodes.length && String(s.nodes[s.nodes.length - 1].getAttribute('ID')) === String(nodeID);
+    const last = isEndNode(taskID, nodeID);
     if (last) { t.playing = false; t.state = 1; t.finishCount = (t.finishCount || 0) + 1; if (!t.firstFinishTime) t.firstFinishTime = now(); }
     M.saveRole(); LOG('task node', taskID, nodeID, 'set', setID, last ? '(task complete)' : '', 'rewards', JSON.stringify(got));
     c.reply(new ByteWriter().u32(taskID).u32(dataID).u32(nodeID).u32(setID).u32(0).u32(0));

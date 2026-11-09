@@ -53,7 +53,7 @@
       if (el) {
         const job = el.getElementsByTagName('Job')[0];
         info = { id, name: el.getAttribute('Name'), mpA: +(job && job.getAttribute('MpA') || 0), mpB: +(job && job.getAttribute('MpB') || 0),
-          lv: Array.from(el.getElementsByTagName('Lv')).map(l => ({ lv: +l.getAttribute('SkillLevel'), petLevel: +(l.getAttribute('PetLevel') || 0), desc: l.getAttribute('Desc') || '' })) };
+          lv: Array.from(el.getElementsByTagName('Lv')).map(l => ({ lv: +l.getAttribute('SkillLevel'), petLevel: +(l.getAttribute('PetLevel') || 0), price: +(l.getAttribute('Price') || 0), desc: l.getAttribute('Desc') || '' })) };
         if (!info.lv.length) info.lv = [{ lv: 1, petLevel: 1, desc: '' }];
       }
     }
@@ -67,15 +67,37 @@
     });
   }
   M.syncPetSkills = syncSkillLevels;
+  // Talent skills (天赋技能): each pet type has a talent pool (Pet.xml <TalentSkill ID Percent>; the pet bag shows
+  // skills from this pool in the three talent slots). APPROX: 1-3 talents drawn from the pool by weight, always at
+  // least one; the original server's draw rule is not in the client. BaseSkill is always learned.
+  function rollTalents(el, have) {
+    const tal = ids(el, 'TalentSkill');
+    const pool = tal.id.map((id, i) => ({ id, w: tal.pc[i] || 100 })).filter(x => M.skillInfo(x.id) && !have.includes(x.id));
+    const want = Math.min(pool.length, 1 + (Math.random() < 0.5 ? 1 : 0) + (Math.random() < 0.2 ? 1 : 0));
+    const out = [];
+    while (out.length < want && pool.length) {
+      const tot = pool.reduce((a, b) => a + b.w, 0); let k = Math.random() * tot;
+      const i = Math.max(0, pool.findIndex(x => (k -= x.w) < 0));
+      out.push(pool[i].id); pool.splice(i, 1);
+    }
+    return out;
+  }
+  M.talentPool = (typeID) => { const t = D.petTypes[typeID]; return ids(t && t.el, 'TalentSkill').id; };
   function initSkills(p) {
-    if (p.skills) return;
     const t = D.petTypes[p.typeID]; const el = t && t.el;
-    const base = ids(el, 'BaseSkill'), tal = ids(el, 'TalentSkill');
-    const list = base.id.slice();
-    let n = 0;
-    tal.id.forEach((id, i) => { if (n < 3 && !list.includes(id) && Math.random() * 1000 < (tal.pc[i] || 0)) { list.push(id); n++; } });
-    p.skills = list.filter(id => M.skillInfo(id)).map(id => ({ id, lv: 1, exp: 0 }));
-    syncSkillLevels(p);
+    if (!p.skills) {
+      const list = ids(el, 'BaseSkill').id.filter(id => M.skillInfo(id));
+      p.skills = list.concat(rollTalents(el, list)).map(id => ({ id, lv: 1, exp: 0 }));
+      p.talentsRolled = true;
+      syncSkillLevels(p);
+    } else if (!p.talentsRolled) {
+      // older saves: make sure the pet has at least one talent from its pool
+      const pool = ids(el, 'TalentSkill').id;
+      if (!p.skills.some(k => pool.includes(k.id) && !ids(el, 'BaseSkill').id.includes(k.id))) {
+        rollTalents(el, p.skills.map(k => k.id)).slice(0, 1).forEach(id => p.skills.push({ id, lv: 1, exp: 0 }));
+      }
+      p.talentsRolled = true; syncSkillLevels(p);
+    }
   }
   M.initPetSkills = initSkills;
 
@@ -185,6 +207,39 @@
     const r = c.role(); const p = findPet(r, rd.u32()); if (!p) return c.reply(null, 200001);
     recalcPet(p); p.hp = p.hp_max; p.mp = p.mp_max; M.saveRole();
     c.reply(new ByteWriter().u32(r.xiaomee).u32(0).u32(1).u32(p.petid).u32(p.hp).u32(p.hp_max).u32(p.mp).u32(p.mp_max).u32(p.injury_lv || 0));
+  });
+
+  // ---- skill shop (trades_SkillStudy_PetModule) and talent unlock
+  const maxSkills = (p) => Number((D.petTypes[p.typeID] || {}).SkillsBar || 10);
+  // 1601 SKILL_PET_ADD(npcID, petID, skillID, level) -> petid, skill_id, skill_lv u8, xiaomee, cost
+  on(1601, (c, rd) => {
+    const npc = rd.u32(), petID = rd.u32(), skillID = rd.u32(), lv = Math.max(1, rd.u32());
+    const r = c.role(); const p = findPet(r, petID); const info = M.skillInfo(skillID);
+    if (!p || !info) return c.reply(null, 200001);
+    initSkills(p);
+    const L = info.lv.find(x => x.lv === lv) || info.lv[0];
+    if (L.petLevel && p.level < L.petLevel) return c.reply(null, 200001);
+    const have = p.skills.find(k => k.id === skillID);
+    if (!have && p.skills.length >= maxSkills(p)) return c.reply(null, 200001);
+    const cost = L.price || 0;
+    if (cost > r.xiaomee) return c.reply(null, 200200);
+    r.xiaomee -= cost;
+    if (have) have.fixedLv = Math.max(have.fixedLv || 0, lv); else p.skills.push({ id: skillID, lv, exp: 0, fixedLv: lv });
+    syncSkillLevels(p); M.saveRole();
+    LOG('pet', p.nick, 'learned', info.name, 'Lv' + lv, 'cost', cost);
+    c.reply(new ByteWriter().u32(petID).u32(skillID).u8(lv).u32(r.xiaomee).u32(cost));
+  });
+  // 1605 SKILL_PET_DEL(petID, skillID, level) -> (client ignores the body)
+  on(1605, (c, rd) => {
+    const p = findPet(c.role(), rd.u32()), id = rd.u32();
+    if (p && p.skills) { p.skills = p.skills.filter(k => k.id !== id); M.saveRole(); }
+    c.reply(new ByteWriter());
+  });
+  // 1607 SKILL_UNLOCK_PET(petID) -> petID, xiaomee (the client marks all skills unlocked: exp 0)
+  on(1607, (c, rd) => {
+    const id = rd.u32(); const r = c.role(); const p = findPet(r, id);
+    if (p && p.skills) { p.skills.forEach(k => { k.exp = 0; }); M.saveRole(); }
+    c.reply(new ByteWriter().u32(id).u32(r.xiaomee));
   });
 
   // 1550 PET_SET_AUTOBATTLE_SKILL(petID, skillID u16, level u16) -> no listener in the client
