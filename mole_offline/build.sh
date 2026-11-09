@@ -46,6 +46,7 @@ java -cp "$LIB/*" org.jf.smali.Main assemble --api 24 -o "$WORK/classes.dex" "$H
 python3 -I "$HERE/android/tools/make_manifest.py" "$WORK/AndroidManifest.xml" "$VERSION_CODE" "$VERSION_NAME" >/dev/null
 
 # 5. pack, sign, verify
+python3 -I "$HERE/tools/make_patches.py" "$CLIENT_DIR" "$HERE/web"
 python3 -I "$HERE/android/tools/build_apk.py" "$WORK/unsigned.apk" "$WORK/classes.dex" "$WORK/AndroidManifest.xml" "$ORIG_APK" "$HERE/web" "$CLIENT_DIR"
 mkdir -p "$WORK/signer"
 javac -cp "$LIB/apksig-2.3.0.jar" -d "$WORK/signer" "$HERE/android/tools/Sign.java" "$HERE/android/tools/Verify.java"

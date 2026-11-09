@@ -2,3 +2,4 @@ http_requests.log
 web/ruffle
 .build/
 out/
+web/module/
