@@ -57,6 +57,7 @@ ORIG_APK=/path/to/base.apk ./build.sh
 签名使用 `android/keystore/debug-offline.p12`（公开的调试密钥，密码 `moleoffline`），只用于让后续版本能覆盖安装，不代表任何官方身份。
 
 ## 4. 使用
+- 安装包以 7z 分卷交付：`mole-offline-full.7z.001` + `.002`（放在同一文件夹，用 ZArchiver 等打开 `.001` 解压），得到 `mole-offline-0.1.0-offline-full.apk`（含全部资源，SHA-256 `588e6c4edbbe50eeba830452ee1b3f75c55ba4fa430b4532aca0d696a2c6087e`）。
 - 包名 `com.molehero.offline`，可与原版共存。
 - 首次登录：输入**大于 50000 的任意数字账号**（例如 100001）和密码，即自动在本地创建账号（原复兴版的注册是网页，离线不可用）；之后需用同一密码。客户端把 50000 以下的 ID 当作怪物/NPC，所以小号码无法使用。
 - 选择服务器 → 剧情动画 → 创建角色（名字、职业、外观）→ 进入新手地图。
