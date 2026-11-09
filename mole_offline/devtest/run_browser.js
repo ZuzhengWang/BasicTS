@@ -26,6 +26,7 @@ const { chromium } = require('playwright');
     if (a.reload) { seen.length = 0; await pg.reload(); }
     if (a.evalLog) console.log('[runner] eval', JSON.stringify(await pg.evaluate(a.evalLog)));
     if (a.click) await pg.mouse.click(a.click[0] * SC, a.click[1] * SC);
+    if (a.clear) { await pg.keyboard.press('End'); for (let i = 0; i < a.clear; i++) await pg.keyboard.press('Backspace'); }
     if (a.type) await pg.keyboard.type(a.type, { delay: 50 });
     if (a.key) await pg.keyboard.press(a.key);
     if (a.shot) await pg.screenshot({ path: a.shot });

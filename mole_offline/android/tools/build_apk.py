@@ -11,7 +11,7 @@ out, dex, manifest, orig, web, client = sys.argv[1:7]
 
 # client folders/files that are shipped (web pages, Windows launchers etc. are not)
 CLIENT_ITEMS = ['Client.swf', 'crossdomain.xml', 'config', 'dll', 'login', 'module', 'res', 'staticRes', 'version']
-STORE_EXT = {'.swf', '.png', '.jpg', '.jpeg', '.gif', '.mp3', '.wasm', '.ttf', '.arsc', '.zip'}
+STORE_EXT = {'.swf', '.png', '.jpg', '.jpeg', '.gif', '.mp3', '.arsc', '.zip'}
 
 
 class Zip:
