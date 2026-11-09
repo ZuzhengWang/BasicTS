@@ -61,12 +61,15 @@
       .u16(r.hit_rate).u16(r.avoid_rate).u16(r.bisha).u16(r.attack_back)
       .u16(r.anti_poison).u16(r.anti_stone).u16(r.anti_sleep).u16(r.anti_curse).u16(r.anti_confusion).u16(r.anti_forget)
       .u32(r.continueLoginDays).u16(r.mgaicAttackPower || 0).zeros(26);
-    w.u8(r.clothes.length);
-    r.clothes.forEach(c => w.u32(c.clothID).u32(c.clothType || 0).u16(c.clothLevel || 0));
+    const cl = M.clothesOf(r);
+    w.u8(cl.length);
+    cl.forEach(c => w.u32(c.clothID).u32(c.clothType).u16(c.clothLevel));
     w.u32(r.petID).u32(r.petTypeID).u8(r.petRace).u8(pnick.length).bytes(pnick).u32(r.petLevel);
     return w;
   }
   M.writeLoginInfo = writeLoginInfo;
+  // ClothInfo list of worn equipment (ClothInfo.clone: clothID = uniqueEquipID, clothType = goodID)
+  M.clothesOf = (r) => (r.dressed || []).map(e => ({ clothID: e.uid, clothType: e.goodID, clothLevel: e.levl || 0 }));
 
   // ------------------------------------------------------------ server
   registerServer('online', {

@@ -206,9 +206,18 @@ def main():
     a = ap.parse_args()
     body, abcs = S.load(a.swf)
     for n, abc, p, h in abcs:
+        seen = set()
         for label, mi in S.iter_methods(abc):
+            seen.add(mi)
             if a.filter is None or a.filter in label:
                 m = abc.methods[mi]
+                print('== %s(%s)' % (label, ', '.join(short(abc.mname(t)) for t in m['params'])))
+                print('\n'.join(pseudo(abc, mi)))
+        # anonymous functions (closures created with newfunction)
+        for mi, m in enumerate(abc.methods):
+            if mi in seen or not m['body']: continue
+            label = 'anon/function_m%d' % mi
+            if a.filter is None or a.filter in label:
                 print('== %s(%s)' % (label, ', '.join(short(abc.mname(t)) for t in m['params'])))
                 print('\n'.join(pseudo(abc, mi)))
 

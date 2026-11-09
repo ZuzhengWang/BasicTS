@@ -138,7 +138,7 @@
       .u16(loops.length);
     loops.forEach(l => {
       w.u32(actor.userID).u32(actor.petID).u8(0).u32(l.atkType).u8(l.level || 1)
-        .i32(0).i32(0).i32(0).u32(0)      // increase_hp, rebound_hp, rebound_mp, useItemID
+        .i32(0).i32(0).i32(0).u32(l.useItemID || 0)   // increase_hp, rebound_hp, rebound_mp, useItemID
         .u32(l.target.userID).u32(l.target.petID).u8(0)
         .u32(0).u32(0).u32(0).u32(0)
         .i32(l.change_hp || 0).i32(l.change_mp || 0).i32(0);
@@ -153,6 +153,15 @@
     if (petID !== 0) return;              // pets are not implemented yet (role only)
     c.push(1313, new ByteWriter().u32(c.uid).u32(0));   // "acted" notice
     resolveRound(c, b, { actionID, side, pos, level });
+  });
+
+  // 1309 BATTLE_ROUND_USE_ITEM: side, posIdx, itemID
+  on(1309, (c, rd) => {
+    const side = rd.u32(), pos = rd.i32(), itemID = rd.u32();
+    const b = c.conn.state.battle;
+    if (!b || b.over) return;
+    c.push(1313, new ByteWriter().u32(c.uid).u32(0));
+    resolveRound(c, b, { actionID: 4, itemID, side, pos });
   });
 
   function resolveRound(c, b, cmd) {
@@ -170,6 +179,19 @@
         if (cmd.actionID === ACT.ESCAPE) {
           acts.push({ actor: a, loops: [{ atkType: ACT.ESCAPE, target: a }] });
           escaped = true; break;
+        }
+        if (cmd.itemID) {
+          // use a recovery item (itemInfo.xml HpUp/MpUp) on an own-side avatar
+          const tgt = b.players.find(p => p.posIdx === cmd.pos) || a;
+          const it = D.items[cmd.itemID] || {};
+          const r0 = c.role();
+          if (M.takeGood(r0, cmd.itemID, 1)) {
+            const hp = Math.max(0, Math.min(Number(it.HpUp || 0), tgt.hp_max - tgt.hp));
+            const mp = Math.max(0, Math.min(Number(it.MpUp || 0), tgt.mp_max - tgt.mp));
+            tgt.hp += hp; tgt.mp += mp;
+            acts.push({ actor: a, loops: [{ atkType: 4, target: tgt, change_hp: hp, change_mp: mp, useItemID: cmd.itemID }] });
+          } else acts.push({ actor: a, loops: [{ atkType: ACT.NONE, target: a }] });
+          continue;
         }
         if (cmd.actionID === ACT.DEFEND || cmd.actionID === ACT.NONE) {
           acts.push({ actor: a, loops: [{ atkType: cmd.actionID, target: a }] });

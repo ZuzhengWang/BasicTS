@@ -17,8 +17,9 @@
       .u8(0)                     // teamNick length
       .u8(0).u8(0).u8(0)         // teamStatus, pkStatus, status
       .zeros(32);
-    w.u8(r.clothes.length);
-    r.clothes.forEach(c => w.u32(c.clothID).u32(c.clothType || 0).u16(c.clothLevel || 0));
+    const cl = M.clothesOf(r);
+    w.u8(cl.length);
+    cl.forEach(c => w.u32(c.clothID).u32(c.clothType).u16(c.clothLevel));
     w.u32(r.petID).u32(r.petTypeID).u8(r.petRace).u8(pnick.length).bytes(pnick).u32(r.petLevel);
     return w;
   }

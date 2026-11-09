@@ -91,7 +91,7 @@
     r.quick = +p.Quick; r.intelligen = +p.Intelligence; r.attr_add = 0;
     // starting equipment of the profession, worn
     r.dressed = String(p.Clothes || '').split(/\s+/).filter(Boolean).map(id => makeEquip(r, id));
-    r.clothes = r.dressed.map(e => ({ clothID: e.goodID, clothType: 0, clothLevel: 0 }));
+    r.clothes = M.clothesOf(r);
     M.setFlag(r, M.FLAG.CREATE, true);
     r.mapID = M.START_MAP.id; r.posX = M.START_MAP.x; r.posY = M.START_MAP.y;
     r.hp = null; r.mp = null; recalc(r);

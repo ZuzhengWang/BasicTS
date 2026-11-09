@@ -27,8 +27,8 @@
 
   D.ready = (async () => {
     const t0 = Date.now();
-    const [prof, equip, map, beast, pet, monsters, skill] = await Promise.all(
-      ['professtion.xml', 'item_equip.xml', 'Map.xml', 'Beastgrp.xml', 'Pet.xml', 'monsters.xml', 'Skill.xml'].map(n => loadXML(n).catch(e => { console.error('[mole]', e); return null; })));
+    const [prof, equip, map, beast, pet, monsters, skill, items] = await Promise.all(
+      ['professtion.xml', 'item_equip.xml', 'Map.xml', 'Beastgrp.xml', 'Pet.xml', 'monsters.xml', 'Skill.xml', 'itemInfo.xml'].map(n => loadXML(n).catch(e => { console.error('[mole]', e); return null; })));
     // professions
     D.profs = {};
     if (prof) for (const p of prof.getElementsByTagName('Prof')) { const a = attrs(p); D.profs[a.ID] = a; }
@@ -45,13 +45,19 @@
     if (map) for (const m of map.getElementsByTagName('Map')) {
       const a = attrs(m); a.el = m; D.maps[a.ID] = a;
     }
+    // normal items (itemInfo.xml): id -> attrs (+ kind attrs: Team/Max)
+    D.items = {};
+    if (items) for (const k of items.getElementsByTagName('Kind')) {
+      const ka = attrs(k);
+      for (const it of k.getElementsByTagName('Item')) { const a = attrs(it); a.kind = ka; D.items[a.ID] = a; }
+    }
     D.beastDoc = beast; D.petDoc = pet; D.monsterDoc = monsters; D.skillDoc = skill;
     // pets / monsters (Pet.xml "Type" entries are monster/pet species)
     D.petTypes = {};
     if (pet) for (const t of pet.getElementsByTagName('Type')) { const a = attrs(t); if (a.ID) { a.el = t; D.petTypes[a.ID] = a; } }
     D.beastGrps = {};
     if (beast) for (const g of beast.getElementsByTagName('Grp')) { const a = attrs(g); a.types = Array.from(g.getElementsByTagName('Type')).map(attrs); D.beastGrps[a.ID] = a; }
-    M.LOG('game data loaded in', Date.now() - t0, 'ms:', Object.keys(D.equips).length, 'equips,', Object.keys(D.maps).length, 'maps,', Object.keys(D.petTypes).length, 'pet types,', Object.keys(D.beastGrps).length, 'beast groups');
+    M.LOG('game data loaded in', Date.now() - t0, 'ms:', Object.keys(D.equips).length, 'equips,', Object.keys(D.items).length, 'items,', Object.keys(D.maps).length, 'maps,', Object.keys(D.petTypes).length, 'pet types,', Object.keys(D.beastGrps).length, 'beast groups');
     return D;
   })();
 })(window);
