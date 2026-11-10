@@ -39,6 +39,7 @@
   function markKills(loops, actor) {
     loops.forEach(l => {
       const t = l.target;
+      if (t && t.side !== undefined) l.state1 = stBits(t);
       if (t && (l.change_hp || 0) < 0 && t.hp <= 0 && !t.downShown) {
         t.downShown = true;
         const off = (l.state2 & ST2_BISHA) !== 0;
@@ -132,7 +133,7 @@
     const sk = (a.skills || []).filter(k => k.id !== ACT.PET_ATTACK);
     w.u8(sk.length);                      // skills: id, maxLevel, currentLevel, disabled rounds
     sk.forEach(k => w.u32(k.id).u8(Math.max(k.lv || 1, (M.skillInfo(k.id) || { lv: [1] }).lv.length)).u8(k.lv || 1).u8(0));
-    w.u32(0).u32(0).u32(0).u32(0).i32(-1); // state2, state1, state4, state3, beastgrpTypeRawIndex
+    w.u32(0).u32(stBits(a)).u32(0).u32(0).i32(-1); // state2, state1 (status), state4, state3, beastgrpTypeRawIndex
   }
 
   function writeStart(b) {
@@ -219,15 +220,16 @@
 
   // BattleActionInfo + BattleActionLoopInfo
   function writeAction(w, seq, actor, loops, mp) {
-    w.u32(seq).u32(actor.userID).u32(actor.petID).u32(0).u32(0).u32(0).u32(0)
-      .i32(0).i32(0).i32(-(mp || 0)).i32(0)   // talkId, hp_change, mp_change (actor's skill cost), sheild_change
+    const th = actor._tickHp || 0, tm = actor._tickMp || 0; actor._tickHp = 0; actor._tickMp = 0;
+    w.u32(seq).u32(actor.userID).u32(actor.petID).u32(0).u32(stBits(actor)).u32(0).u32(0)   // state2, state1, state4, state3
+      .i32(0).i32(th).i32(tm - (mp || 0)).i32(0)   // talkId, hp_change, mp_change (actor's skill cost), sheild_change
       .u32(0).u32(0).u16(0)               // jisheng
       .u16(loops.length);
     loops.forEach(l => {
       w.u32(actor.userID).u32(actor.petID).u8(0).u32(l.atkType).u8(l.level || 1)
         .i32(0).i32(0).i32(0).u32(l.useItemID || 0)   // increase_hp, rebound_hp, rebound_mp, useItemID
         .u32(l.target.userID).u32(l.target.petID).u8(0)
-        .u32(l.state2 || 0).u32(0).u32(0).u32(0)        // state2 (capture success bit), state1, state4, state3
+        .u32(l.state2 || 0).u32(l.state1 || 0).u32(0).u32(0)        // state2, state1 (status bits), state4, state3
         .i32(l.change_hp || 0).i32(l.change_mp || 0).i32(0);
     });
   }
@@ -285,6 +287,51 @@
     const b = current(c); if (b) roleCmd(c, b, { actionID: ACT.CALL_PET, petID });
   });
 
+  // ---------------------------------------------------------------- status effects (异常状态)
+  // Effects as described in Skill.xml: 中毒 -10% current HP and 诅咒 -10% current MP before each action,
+  // 昏睡/睡眠 cannot act and wakes when hit, 石化 damage and healing taken halved, 遗忘 skills fail (normal attack
+  // only), 混乱 acts on a random target of either side. Client display: state1 bits (module AvatarState).
+  const STATUS = [
+    { k: 'stone', bit: 1, re: /石化/ }, { k: 'forget', bit: 2, re: /遗忘/ }, { k: 'confusion', bit: 4, re: /混乱/ },
+    { k: 'curse', bit: 8, re: /诅咒/ }, { k: 'poison', bit: 16, re: /毒/ }, { k: 'sleep', bit: 32, re: /睡眠|昏睡/ },
+  ];
+  const stBits = (a) => a && a.status ? STATUS.reduce((v, x) => v | (a.status[x.k] > 0 ? x.bit : 0), 0) : 0;
+  const has = (a, k) => !!(a && a.status && a.status[k] > 0);
+  // resistance: own skills named "X抵抗" (Skill.xml "抗性增加N%")
+  function resist(t, st) {
+    let v = 0;
+    (t.skills || []).forEach(k => { const info = M.skillInfo(k.id); if (!info || !/抵抗/.test(info.name) || !st.re.test(info.name)) return;
+      const L = info.lv.find(x => x.lv === k.lv) || info.lv[0]; const m = L && L.desc.match(/(\d+)%/); if (m) v += Number(m[1]); });
+    return v;
+  }
+  function tryStatus(t, sk) {
+    if (!sk.status || !t || t.hp <= 0) return false;
+    const st = STATUS.find(x => x.k === sk.status);
+    const p = Math.max(5, sk.statusChance - resist(t, st));
+    if (Math.random() * 100 >= p) return false;
+    t.status = t.status || {}; t.status[st.k] = Math.max(t.status[st.k] || 0, sk.statusRounds);
+    LOG('status', t.nick, st.k, sk.statusRounds + ' rounds');
+    return true;
+  }
+  // before an avatar acts: poison/curse damage, durations; returns true if it cannot act (sleep)
+  function statusTick(a) {
+    a._tickHp = 0; a._tickMp = 0; a._confused = has(a, 'confusion'); a._forget = has(a, 'forget');
+    if (!a.status) return false;
+    if (has(a, 'poison')) { const d = Math.floor(a.hp * 0.1); a.hp -= d; a._tickHp = -d; }
+    if (has(a, 'curse')) { const d = Math.floor(a.mp * 0.1); a.mp -= d; a._tickMp = -d; }
+    const asleep = has(a, 'sleep');
+    Object.keys(a.status).forEach(k => { a.status[k]--; if (a.status[k] <= 0) delete a.status[k]; });
+    return asleep;
+  }
+  // damage / healing taken, with 石化 halving and 昏睡 waking up
+  function hurt(t, dmg) {
+    if (has(t, 'stone')) dmg = Math.ceil(dmg / 2);
+    if (dmg > 0 && has(t, 'sleep')) delete t.status.sleep;
+    t.hp = Math.max(0, t.hp - dmg);
+    return dmg;
+  }
+  const healAmt = (t, h) => has(t, 'stone') ? Math.floor(h / 2) : h;
+
   // ---------------------------------------------------------------- skills
   // Skill effects follow BattleActionListConfig.xml Type/TargetAmount and the numbers written in Skill.xml
   // level descriptions ("1.3倍物理攻击", "基础伤害123"). APPROX: the exact formulas are server side.
@@ -295,7 +342,11 @@
     const desc = (L && L.desc) || '';
     const pct = desc.match(/提升(\d+)%物理攻击/);
     const mult = desc.match(/(\d+(?:\.\d+)?)倍/), base = desc.match(/基础伤害(\d+)/), heal = desc.match(/回复(\d+)/);
+    const nm = info.name || '';
+    const st = /抵抗/.test(nm) ? null : STATUS.find(x => x.re.test(nm));
+    const chance = desc.match(/有(\d+)%概率/), rounds = desc.match(/(\d+)回合/);
     return {
+      status: st ? st.k : null, statusChance: chance ? Number(chance[1]) : Math.min(90, 40 + 8 * lv), statusRounds: rounds ? Number(rounds[1]) : 2,
       id, lv, desc, type: +act.Type || 1, amount: +act.TargetAmount || 0, target: +act.ApplyTarget || 2,
       mp: info.mpA + info.mpB * Math.max(0, lv - 1),
       revive: /复活/.test(desc + ((M.skillInfo(id) || {}).name || '')), revivePct: (desc.match(/(\d+)%/) ? Number(desc.match(/(\d+)%/)[1]) / 100 : 0.3),
@@ -318,7 +369,14 @@
   // one avatar's attack or skill: returns the action loops
   function doAttack(a, cmd, foes, friends, defending) {
     const lv = cmd.level || 1;
-    const sk = skillOf(cmd.actionID, lv);
+    let sk = skillOf(cmd.actionID, lv);
+    if (a._forget) sk = null;                                   // 遗忘: skills fail
+    if (a._confused) {                                          // 混乱: normal attack on a random avatar of either side
+      sk = null; const all = alive(foes.concat(friends)).filter(x => x !== a);
+      const t = pick(all); if (!t) return [];
+      const r = damage(a, t, defending.has(t)); r.dmg = hurt(t, r.dmg);
+      return [{ atkType: a.isRole ? ACT.ATTACK : ACT.PET_ATTACK, target: t, change_hp: -r.dmg, state2: hitBits(r, t, defending) }];
+    }
     const first = cmd.side === (a.side === 0 ? 1 : 0) ? foes.find(m => m.posIdx === cmd.pos) : (cmd.side === a.side ? friends.find(m => m.posIdx === cmd.pos) : null);
     if (sk && a.mp >= sk.mp) {
       a.mp -= sk.mp; a._mpCost = sk.mp;
@@ -331,7 +389,7 @@
       }
       if (sk.type === 4) {   // HP recovery on own side
         const tgts = targetsFor(friends, first && first.side === a.side ? first : a, sk.amount);
-        return tgts.map((t, i) => { const h = Math.max(0, Math.min(sk.heal, t.hp_max - t.hp)); t.hp += h;
+        return tgts.map((t, i) => { const h = Math.max(0, Math.min(healAmt(t, sk.heal), t.hp_max - t.hp)); t.hp += h;
           return { atkType: sk.id, level: lv, target: t, change_hp: h }; });
       }
       if ([3, 5, 9, 17].includes(sk.type)) {   // defensive skills: treated as defending this round
@@ -344,13 +402,14 @@
         return tgts.map(t => { const d = Math.min(t.mp, Math.max(1, Math.round(t.mp * pc + a.atk * 0.05)));
           t.mp -= d; return { atkType: sk.id, level: lv, target: t, change_mp: -d }; });
       }
-      if (sk.type === 8) {   // 异常状态魔法 (petrify/confuse/... fields): no HP damage; APPROX: status effects not simulated
-        return tgts.map(t => ({ atkType: sk.id, level: lv, target: t }));
+      if (sk.type === 8) {   // 异常状态魔法: no HP damage, applies the status (chance from level, minus the target's 抵抗)
+        return tgts.map(t => { const ok = tryStatus(t, sk); return { atkType: sk.id, level: lv, target: t, state2: ok ? 0 : 32 }; });
       }
       return tgts.map((t, i) => {
         const r = (sk.type === 7 || sk.type === 6) ? magicDamage(a, t, sk)
           : (() => { const x = damage(a, t, defending.has(t)); x.dmg = Math.round(x.dmg * sk.mult); return x; })();
-        t.hp = Math.max(0, t.hp - r.dmg);
+        r.dmg = hurt(t, r.dmg);
+        if (!r.miss) tryStatus(t, sk);
         if (sk.type === 15 || sk.type === 6) { const h = Math.round(r.dmg * 0.3); a.hp = Math.min(a.hp_max, a.hp + h); }
         return { atkType: sk.id, level: lv, target: t, change_hp: -r.dmg, state2: hitBits(r, t, defending) };
       });
@@ -358,7 +417,7 @@
     const tgt = (first && first.side !== a.side && first.hp > 0) ? first : pick(alive(foes));
     if (!tgt) return [];
     const r = damage(a, tgt, defending.has(tgt));
-    tgt.hp = Math.max(0, tgt.hp - r.dmg);
+    r.dmg = hurt(tgt, r.dmg);
     return [{ atkType: a.isRole ? ACT.ATTACK : ACT.PET_ATTACK, target: tgt, change_hp: -r.dmg, state2: hitBits(r, tgt, defending) }];
   }
   // monster AI: SpecSkill by weight (APPROX 35% of turns), otherwise a normal attack on a random player
@@ -368,7 +427,7 @@
       const s = m.spec.find(x => (k -= x.w) < 0) || m.spec[0];
       const act = D.actions[s.id];
       // only skills with knock-down (3) and knock-off (5) phases: a kill by a skill without them shows no fall
-      if (act && (!act.User || act.User === '1' || act.User === '2') && (act.Type === '2' || (act.phases.includes(3) && act.phases.includes(5))) && skillOf(s.id, 1)) return { actionID: s.id, level: Math.max(1, Math.min(10, Math.ceil(m.level / 10))), side: 0, pos: -1 };
+      if (act && (!act.User || act.User === '1' || act.User === '2') && (act.Type === '2' || act.Type === '8' || (act.phases.includes(3) && act.phases.includes(5))) && skillOf(s.id, 1)) return { actionID: s.id, level: Math.max(1, Math.min(10, Math.ceil(m.level / 10))), side: 0, pos: -1 };
     }
     return { actionID: ACT.PET_ATTACK, side: 0, pos: -1 };
   }
@@ -427,6 +486,11 @@
     b.players.forEach(a => { const k = cmds[a.petID]; if (k && (k.actionID === ACT.DEFEND || k.actionID === ACT.PET_DEFEND)) defending.add(a); });
     for (const a of order) {
       if (a.hp <= 0 || (a.side === 0 && !b.players.includes(a))) continue;
+      if (a.petState === PS.AIDE_PET && b.aidesAway) continue;
+      if (statusTick(a)) {   // asleep: no action this round (the poison/curse loss is still shown)
+        acts.push({ actor: a, loops: [{ atkType: a.isRole ? ACT.NONE : ACT.PET_NONE, target: a }] });
+        continue;
+      }
       if (a.side === 0) {
         if (a.petState === PS.AIDE_PET && b.aidesAway) continue;
         let cmd = a.petState === PS.AIDE_PET ? { actionID: ACT.PET_ATTACK, side: 1, pos: -1 } : cmds[a.petID];
