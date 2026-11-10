@@ -60,7 +60,7 @@
     contextMenu: 'off', showSwfDownload: false, openUrlMode: 'deny',
     deviceFontRenderer: 'canvas',
     maxExecutionDuration: 120,   // some maps (勇士大厅 11302) run a long init script; the default 15 s aborted it
-    quality: 'low',   // what the desktop tests ran at; lighter on phone GPUs/memory than 'medium'/'high'
+    quality: 'medium',   // 'low' made small text unreadable on the phone
     // Flash sockets are redirected to the in-page servers (server/core.js FakeWebSocket).
     socketProxy: [
       { host: '202.189.23.31', port: 1800, proxyUrl: 'ws://mole.local/login' },
@@ -71,10 +71,10 @@
 </script>
 <script>
   // Memory: Ruffle sizes its drawing surface by devicePixelRatio. Phones report about 3, i.e. 9x the pixels
-  // of the game's own 990x560 stage, and every frame buffer / cached bitmap grows with it. Cap it (default 1;
+  // of the game's own 990x560 stage, and every frame buffer / cached bitmap grows with it. Cap it (default 2: text stays sharp; the big memory use was the blend-mode copies, see tools/swfplace.py;
   // ?dpr= for tests, 0 = no cap; the modifier's 画面 tab saves a choice).
   (function () {
-    let cap = 1; try { const v = localStorage.getItem('mole_dpr'); if (v !== null) cap = parseFloat(v); } catch (e) { }
+    let cap = 2; try { const v = localStorage.getItem('mole_dpr'); if (v !== null) cap = parseFloat(v); } catch (e) { }
     const qd = new URLSearchParams(location.search).get('dpr'); if (qd !== null) cap = parseFloat(qd);
     const real = window.devicePixelRatio || 1; window.__moleRealDpr = real;
     if (cap > 0 && real > cap) { try { Object.defineProperty(window, 'devicePixelRatio', { get: () => cap, configurable: true }); } catch (e) { } }

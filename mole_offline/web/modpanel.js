@@ -215,9 +215,9 @@
     const opts = [['', '默认(wgpu-webgl，电脑上测试通过)'], ['webgl', 'webgl'], ['wgpu-webgpu', 'WebGPU'], ['canvas', 'canvas(不推荐，换装/动画会坏)']];
     main.appendChild(el('<div><p>当前渲染器：<b>' + esc(window.__moleRenderer || '未知') + '</b></p><p style="font-size:12px;color:#666">' +
       esc((window.__moleRendererInfo || '').slice(0, 300)) + '</p><p>如果怪物血条清空却不倒下、装备和人物分离、没有技能动画，试着换一个渲染器（会重新载入，进度已保存）：</p></div>'));
-    let sd = '1'; try { const v = localStorage.getItem('mole_dpr'); if (v !== null) sd = v; } catch (e) { }
-    main.appendChild(el('<p>画面清晰度（越低越省内存，手机闪退就选 1）：当前 ' + esc(window.__moleDpr) + '，屏幕原生 ' + esc(window.__moleRealDpr) + '</p>'));
-    [['1', '1（默认，最省内存）'], ['1.5', '1.5'], ['2', '2（更清晰，更耗内存）'], ['0', '原生（最耗内存）']].forEach(([v, t]) => {
+    let sd = '2'; try { const v = localStorage.getItem('mole_dpr'); if (v !== null) sd = v; } catch (e) { }
+    main.appendChild(el('<p>画面清晰度（越低越省内存）：当前 ' + esc(window.__moleDpr) + '，屏幕原生 ' + esc(window.__moleRealDpr) + '</p>'));
+    [['1', '1（最省内存，文字会糊）'], ['1.5', '1.5'], ['2', '2（默认）'], ['0', '原生（最清晰，最耗内存）']].forEach(([v, t]) => {
       const b = el('<button class="tab" style="margin:4px">' + (v === sd ? '✔ ' : '') + esc(t) + '</button>');
       b.onclick = () => { try { localStorage.setItem('mole_dpr', v); } catch (e) { } if (M.saveRole) M.saveRole(); location.reload(); };
       main.appendChild(b);

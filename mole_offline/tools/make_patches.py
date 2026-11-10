@@ -108,3 +108,43 @@ for dll in ('dll/NewDLL.swf', 'dll/ClientCoreDLL.swf'):
         return w + sget + b'\x12' + P.s24(len(sbody)) + sbody             # if (_safeMapBmd) sync it too
     P.patch_swf(path, path, L5, [(at, 0, sync)])
     print('patched', dll, 'MapModel.makeMapPathData (bitmap sync)')
+
+
+# 6. Complex blend modes in maps and battle backgrounds -> cheap ones (see swfplace.py: GPU memory on the phone).
+import glob, swfplace
+tot = files = 0
+for pat in ('res/map/*.swf', 'res/mapAll/*.swf', 'res/battle/bg/*.swf'):
+    for f in sorted(glob.glob(os.path.join(client, pat))):
+        r = os.path.relpath(f, client)
+        try:
+            n = swfplace.deblend(f, os.path.join(web, r))
+        except Exception as e:
+            print('deblend failed', r, e); continue
+        if n: tot += n; files += 1
+print('deblend: %d placements in %d files' % (tot, files))
+
+# 7. battle.swf SuitPart.show: every outfit part (suitMC) holds one child clip per body action; SuitPart.frameHandle,
+#    registered as the frame script of every suitMC frame, moves that child to (0,0) and to the current sub frame.
+#    Under Ruffle the frame script does not always run when show() changes the frame (seen when the role returns to
+#    the wait pose after an action), so the child kept its authored offset: the outfit was drawn in a corner of the
+#    battle field and the role stood there bare ("装备和人物分离"). show() now calls frameHandle() itself after the
+#    gotoAndStop, which is what the frame script would have done.
+L7 = 'com.mole2.module.battle.body.part::SuitPart/show'
+def u30at(c, p):
+    v = sh = 0
+    while True:
+        b = c[p]; p += 1; v |= (b & 0x7f) << sh; sh += 7
+        if not b & 0x80: return v
+body_, abcs_ = S.load(dst)
+for n_, abc_, p_, h_ in abcs_:
+    try:
+        mi_ = P.find_method(abc_, L7)
+    except KeyError:
+        continue
+    ret = [a for a, nm, x in S.disasm(abc_, abc_.methods[mi_]['body']['code']) if nm == 'returnvoid'][-1]
+    mi2 = P.find_method(abc_, 'com.mole2.module.battle.body.part::SuitPart/initFrame')
+    c2 = abc_.methods[mi2]['body']['code']
+    fh = [u30at(c2, a + 1) for a, nm, x in S.disasm(abc_, c2) if nm == 'getproperty' and str(x[0]).endswith('frameHandle')][0]
+    P.patch_swf(dst, dst, L7, [(ret, 0, b'\xd0\x4f' + P.u30(fh) + b'\x00')], extra_stack=1)
+    print('patched', rel, 'SuitPart.show (frameHandle call)')
+    break

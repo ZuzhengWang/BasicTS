@@ -30,6 +30,24 @@ const { chromium } = require('playwright');
     const seed = require('fs').readFileSync(process.env.SEED_FILE, 'utf8');
     await pg.addInitScript((txt) => { try { if (!sessionStorage.getItem('seeded')) { localStorage.setItem('mole_offline_save', txt); sessionStorage.setItem('seeded', '1'); } } catch (e) {} }, seed);
   }
+  if (process.env.GLLOG) {   // log large WebGL allocations / readbacks and running texture totals
+    await pg.addInitScript(() => {
+      const P = WebGL2RenderingContext.prototype; const st = { tex: 0, texDel: 0, rb: 0, px: 0, read: 0, readPx: 0, fb: 0 };
+      window.__glst = st; const big = (w, h) => w * h >= 1000000;
+      const wrap = (n, f) => { const o = P[n]; P[n] = function () { try { f.apply(this, arguments); } catch (e) { } return o.apply(this, arguments); }; };
+      wrap('createTexture', () => st.tex++); wrap('deleteTexture', () => st.texDel++); wrap('createFramebuffer', () => st.fb++);
+      wrap('texImage2D', function (t, l, f, w, h) { if (typeof h === 'number') { st.px += w * h; if (big(w, h)) console.log('[gl] texImage2D ' + w + 'x' + h); } });
+      wrap('texStorage2D', function (t, lv, f, w, h) { st.px += w * h; if (big(w, h)) console.log('[gl] texStorage2D ' + w + 'x' + h + ' lv' + lv); });
+      wrap('renderbufferStorage', function (t, f, w, h) { st.px += w * h; st.rb++; if (big(w, h)) console.log('[gl] renderbufferStorage ' + w + 'x' + h); });
+      wrap('renderbufferStorageMultisample', function (t, s, f, w, h) { st.px += w * h * s; st.rb++; if (big(w, h)) console.log('[gl] rbMS x' + s + ' ' + w + 'x' + h); });
+      wrap('readPixels', function (x, y, w, h) { st.read++; st.readPx += w * h; if (big(w, h)) console.log('[gl] readPixels ' + w + 'x' + h); });
+      setInterval(() => console.log('[gl] totals ' + JSON.stringify(st)), 2000);
+    });
+  }
+  if (process.env.SLOW_RE) {   // delay matching requests (phone asset loading is slower / differently ordered)
+    const re = new RegExp(process.env.SLOW_RE), ms = +(process.env.SLOW_MS || 3000);
+    await pg.route(u => re.test(u.toString()), async r => { await new Promise(z => setTimeout(z, ms * (0.5 + Math.random()))); r.continue(); });
+  }
   if (process.env.FAKE_NATIVE) {
     await pg.addInitScript(() => {
       let store = null;
