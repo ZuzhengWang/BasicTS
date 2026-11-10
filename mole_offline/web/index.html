@@ -19,7 +19,7 @@
       try {
         let s = Array.prototype.map.call(args, a => (typeof a === 'string' ? a : (a && a.stack) || JSON.stringify(a))).join(' ');
         s = s.replace(/%c/g, '').replace(/color: [^;]+;?|background: [^;]+;?|font-style: [^;]+;?/g, '');
-        if (lvl === 'log' && !/\[mole\]|失败|Error|error|panic|加载/.test(s)) return;
+        if (lvl === 'log' && !/\[mole\]|失败|Error|error|panic|加载|renderer/.test(s)) return;
         N.log(((Date.now() - t0) / 1000).toFixed(1) + 's ' + lvl + ' ' + s.slice(0, 400));
       } catch (e) { }
     };
@@ -60,7 +60,7 @@
     contextMenu: 'off', showSwfDownload: false, openUrlMode: 'deny',
     deviceFontRenderer: 'canvas',
     maxExecutionDuration: 120,   // some maps (勇士大厅 11302) run a long init script; the default 15 s aborted it
-    quality: 'medium',   // lighter on phone GPUs/memory than the default 'high'
+    quality: 'low',   // what the desktop tests ran at; lighter on phone GPUs/memory than 'medium'/'high'
     // Flash sockets are redirected to the in-page servers (server/core.js FakeWebSocket).
     socketProxy: [
       { host: '202.189.23.31', port: 1800, proxyUrl: 'ws://mole.local/login' },
@@ -78,7 +78,13 @@
   player.openHardwareAccelerationModal = () => {};
   document.getElementById('game').appendChild(player);
   const q = new URLSearchParams(location.search);
-  if (q.get('r')) window.RufflePlayer.config.preferredRenderer = q.get('r');
+  // Renderer: ?r= (tests) > choice saved in the modifier's 画面 tab > wgpu-webgl, the backend all desktop tests ran on.
+  // Ruffle falls back to the other backends by itself if the preferred one cannot start.
+  let savedR = ''; try { savedR = localStorage.getItem('mole_renderer') || ''; } catch (e) { }
+  window.RufflePlayer.config.preferredRenderer = q.get('r') || savedR || 'wgpu-webgl';
+  // remember which backend Ruffle really used (Ruffle logs "Used renderer: X"); shown in the modifier's 画面 tab
+  { const o = console.log; console.log = function () { const m = /Used renderer: ([\w-]+)/.exec(String(arguments[0])); if (m) { window.__moleRenderer = m[1];
+      o.call(console, '[mole] renderer ' + m[1]); } return o.apply(console, arguments); }; }
   if (q.get('q')) window.RufflePlayer.config.quality = q.get('q');
   window.Mole.Data.ready.finally(() => player.load({ url: 'Client.swf', parameters: {} }));
   window.__player = player;

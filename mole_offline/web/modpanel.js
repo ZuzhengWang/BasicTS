@@ -32,7 +32,7 @@
   box.innerHTML = '<header><b>修改器</b></header><main></main><footer>点上面的分类开始。修改会立即保存到本地存档。</footer>';
   document.body.appendChild(box);
   const head = box.querySelector('header'), main = box.querySelector('main'), foot = box.querySelector('footer');
-  const tabs = { item: '物品/装备', pet: '加宠物', mypet: '我的宠物', myequip: '我的装备', role: '角色' };
+  const tabs = { item: '物品/装备', pet: '加宠物', mypet: '我的宠物', myequip: '我的装备', role: '角色', gfx: '画面' };
   let cur = 'item';
   Object.keys(tabs).forEach(k => { const b = document.createElement('button'); b.className = 'tab'; b.textContent = tabs[k]; b.dataset.k = k; b.onclick = () => show(k); head.appendChild(b); });
   const xb = document.createElement('button'); xb.className = 'x'; xb.textContent = '×'; xb.onclick = () => { box.style.display = 'none'; }; head.appendChild(xb);
@@ -67,8 +67,8 @@
   function show(k) {
     cur = k; head.querySelectorAll('.tab').forEach(b => b.classList.toggle('on', b.dataset.k === k));
     main.innerHTML = '';
-    if (!role() && k !== 'item' && k !== 'pet') { main.innerHTML = '<p>请先登录并进入游戏地图。</p>'; return; }
-    ({ item: itemTab, pet: petTab, mypet: myPetTab, myequip: myEquipTab, role: roleTab })[k]();
+    if (!role() && k !== 'item' && k !== 'pet' && k !== 'gfx') { main.innerHTML = '<p>请先登录并进入游戏地图。</p>'; return; }
+    ({ item: itemTab, pet: petTab, mypet: myPetTab, myequip: myEquipTab, role: roleTab, gfx: gfxTab })[k]();
   }
 
   // ---- search & add items / equipment
@@ -174,6 +174,20 @@
       main.appendChild(card);
     });
     main.appendChild(el('<p class="muted">穿着的装备改完后，重新打开个人秀或重新登录界面才完全刷新。</p>'));
+  }
+
+  // ---- renderer (phones differ from desktop: Ruffle picks WebGPU / WebGL / canvas by itself)
+  function gfxTab() {
+    let saved = ''; try { saved = localStorage.getItem('mole_renderer') || ''; } catch (e) { }
+    const opts = [['', '自动(默认)'], ['wgpu-webgl', 'wgpu-webgl(推荐，电脑上测试通过)'], ['webgl', 'webgl'], ['wgpu-webgpu', 'WebGPU'], ['canvas', 'canvas(不推荐，换装/动画会坏)']];
+    main.appendChild(el('<div><p>当前渲染器：<b>' + esc(window.__moleRenderer || '未知') + '</b></p><p style="font-size:12px;color:#666">' +
+      esc((window.__moleRendererInfo || '').slice(0, 300)) + '</p><p>如果怪物血条清空却不倒下、装备和人物分离、没有技能动画，试着换一个渲染器（会重新载入，进度已保存）：</p></div>'));
+    opts.forEach(([v, t]) => {
+      const b = el('<button class="tab" style="display:block;margin:6px 0">' + (v === saved ? '✔ ' : '') + esc(t) + '</button>');
+      b.onclick = () => { try { if (v) localStorage.setItem('mole_renderer', v); else localStorage.removeItem('mole_renderer'); } catch (e) { }
+        if (M.saveRole) M.saveRole(); location.reload(); };
+      main.appendChild(b);
+    });
   }
 
   // ---- role

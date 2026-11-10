@@ -2,7 +2,7 @@
 const { chromium } = require('playwright');
 (async () => {
   const [url, secs, out, actions] = process.argv.slice(2);
-  const b = await chromium.launch({ args: ['--enable-unsafe-swiftshader', '--use-gl=swiftshader', '--autoplay-policy=no-user-gesture-required', '--ignore-gpu-blocklist'] });
+  const b = await chromium.launch({ args: ['--enable-unsafe-swiftshader', '--use-gl=swiftshader', '--autoplay-policy=no-user-gesture-required', '--ignore-gpu-blocklist', ...(process.env.EXTRA_ARGS ? process.env.EXTRA_ARGS.split(' ') : [])] });
   const SC = parseFloat(process.env.SCALE || '1');
   const pg = await b.newPage({ viewport: { width: Math.round(990 * SC), height: Math.round(560 * SC) }, hasTouch: !!process.env.TOUCH });
   if (process.env.THROTTLE) { const cdp = await pg.context().newCDPSession(pg); await cdp.send('Emulation.setCPUThrottlingRate', { rate: Number(process.env.THROTTLE) }); }
