@@ -195,6 +195,10 @@
     const cur = M.taskPlaying(r);
     if (!cur.length) main.appendChild(el('<p style="color:#888">没有进行中的任务。</p>'));
     cur.forEach(t => main.appendChild(row(t, '进行中')));
+    main.appendChild(el('<p><b>可接的任务</b>（旅行记事里还没接的，例如「命运之轮①」，也可以直接完成）</p>'));
+    const av = M.taskAvailable ? M.taskAvailable(r) : [];
+    if (!av.length) main.appendChild(el('<p style="color:#888">没有可接的任务。</p>'));
+    av.slice(0, 30).forEach(t => main.appendChild(row(Object.assign({}, t, { name: '[' + t.kind + '] ' + t.name }), '未接')));
     main.appendChild(el('<p><b>搜索任务</b>（还没接的任务也可以完成，例如要在勇士大厅接的任务）</p>'));
     const box2 = el('<div><input placeholder="任务名或ID" style="width:60%;font-size:15px"> <button class="tab">搜索</button><div></div></div>');
     const inp = box2.querySelector('input'), res = box2.querySelector('div');

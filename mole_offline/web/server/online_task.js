@@ -116,6 +116,30 @@
     return Object.keys(summary).filter(id => summary[id].nodes.length && (id === q || taskName(id).includes(q)))
       .slice(0, 40).map(id => ({ id: Number(id), name: taskName(id), level: Number(summary[id].el.getAttribute('Level') || 0) }));
   };
+  // tasks the role could accept now (what 旅行记事 lists without a 进行中 entry): not playing, not finished (or
+  // repeatable), level reached, profession allowed (Job -1/-2 = any; 1..5 = that profession; others skipped, APPROX),
+  // ParentCost of the ParentList tasks finished. Main line (Kind 1) first.
+  const KIND = { 1: '主线', 2: '支线', 3: '其他', 4: '运营', 5: '其他' };
+  M.taskAvailable = function (r) {
+    if (!summary) return [];
+    const ts = tasks(r); const done = (id) => { const t = ts[id]; return !!(t && !t.playing && t.finishCount > 0); };
+    const out = [];
+    Object.keys(summary).forEach(id => {
+      const s = summary[id]; if (!s.nodes.length) return;
+      const e = s.el, t = ts[id];
+      if (t && t.playing) return;
+      if (done(id) && finishedState(id) === 2) return;
+      if (Number(e.getAttribute('Level') || 0) > r.level) return;
+      const job = Number(e.getAttribute('Job') || -1);
+      if (job > 0 && job !== (r.professtion || 0)) return;
+      const parents = String(e.getAttribute('ParentList') || '').split(/[ ,;|]+/).filter(x => x && x !== '0');
+      const need = Math.min(parents.length, Number(e.getAttribute('ParentCost') || parents.length) || parents.length);
+      if (parents.filter(done).length < need) return;
+      const kind = Number(e.getAttribute('Kind') || 0);
+      out.push({ id: Number(id), name: taskName(id), level: Number(e.getAttribute('Level') || 0), kind: KIND[kind] || '其他', k: kind === 1 ? 0 : kind === 2 ? 1 : 2 });
+    });
+    return out.sort((a, b) => a.k - b.k || a.level - b.level || a.id - b.id);
+  };
   M.forceFinishTask = function (r, taskID) {
     const s = summary && summary[taskID]; if (!s || !s.nodes.length) return '找不到任务 ' + taskID;
     const ts = tasks(r);
