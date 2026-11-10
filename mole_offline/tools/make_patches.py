@@ -64,3 +64,12 @@ for dll in ('dll/NewDLL.swf', 'dll/ClientCoreDLL.swf'):
         return b'\x5d' + P.u30(m[0]) + b'\xd1' + b'\x4f' + P.u30(m[0]) + b'\x01'
     P.patch_swf(os.path.join(client, dll), os.path.join(web, dll), L3, [(a, b - a, show)], extra_stack=1)
     print('patched', dll, 'ItemTipsController.onMouseDown')
+
+# 4. Case mismatches: the client was made for Windows (case-insensitive); Android assets are case-sensitive.
+#    ClientConfig.getMinMapSwfPath asks for res/minMap/ but the folder is res/MinMap/ (区域地图 "资源MinMap-1加载失败").
+import shutil
+for src_rel, dst_rel in [('res/MinMap', 'res/minMap')]:
+    s, d = os.path.join(client, src_rel), os.path.join(web, dst_rel)
+    if os.path.isdir(s):
+        shutil.rmtree(d, ignore_errors=True); shutil.copytree(s, d)
+        print('alias', src_rel, '->', dst_rel)

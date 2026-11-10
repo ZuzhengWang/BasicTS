@@ -59,6 +59,7 @@
     allowNetworking: 'all', allowScriptAccess: true, warnOnUnsupportedContent: false,
     contextMenu: 'off', showSwfDownload: false, openUrlMode: 'deny',
     deviceFontRenderer: 'canvas',
+    maxExecutionDuration: 120,   // some maps (勇士大厅 11302) run a long init script; the default 15 s aborted it
     quality: 'medium',   // lighter on phone GPUs/memory than the default 'high'
     // Flash sockets are redirected to the in-page servers (server/core.js FakeWebSocket).
     socketProxy: [
