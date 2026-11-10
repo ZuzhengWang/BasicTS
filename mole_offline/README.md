@@ -167,3 +167,17 @@ App 记录 Java 崩溃和 WebView 渲染进程退出，下次启动会显示诊�
 - **v0.1 为了满足 500 MiB 的发送上限，没有打包编号 ≥10000 的任务动画**（`res/task/swf2/` 中 325 个文件、约 92 MB：支线/周期任务与后期地图剧情）。主线、新手流程和战斗所需资源都在。构建时设 `MOLE_SKIP_SIDE_TASKS=0` 可生成完整版（约 565 MB）；
 - 仓库缓存缺失的资源（例如 `login/CareerSelectModule.swf`、部分地图）无法补全；
 - 原 AIR 版的资源热更新、充值、网页跳转等在线功能不提供。
+
+## 电脑版（浏览器）
+
+手机内存不够时用电脑玩。`pc/main.go` 是启动器：直接从 `game.zip.001/.002…`（一个 zip 按 300 MiB 原样切开，不用解压）读游戏文件，
+在 127.0.0.1:18090 提供页面并打开默认浏览器；向 index.html 注入 `window.MoleNative`，存档写到程序旁边的 `save.json`，日志写 `game_log.txt`。
+找不到文件时按不区分大小写再找一次（原客户端按 Windows 路径编写）。
+
+构建：
+```
+cd pc && GOOS=windows GOARCH=amd64 go build -ldflags "-s -w" -o MoleOffline-Windows.exe . && GOOS=darwin GOARCH=arm64 go build -ldflags "-s -w" -o MoleOffline-Mac .
+python3 -I pc/make_game_zip.py web $CLIENT_DIR out/pc   # 先跑过 build.sh（它会生成 web/module、web/dll 补丁）
+cp pc/MoleOffline-* pc/使用说明.txt out/pc/
+```
+已验证：Linux 版同一启动器 + Chromium 测试（见下面的提交说明）。Windows/Mac 可执行文件只做了交叉编译，没有在真机上运行过。
