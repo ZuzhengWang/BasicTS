@@ -55,7 +55,7 @@
     D.items = {};
     if (items) for (const k of items.getElementsByTagName('Kind')) {
       const ka = attrs(k);
-      for (const it of k.getElementsByTagName('Item')) { const a = attrs(it); a.kind = ka; D.items[a.ID] = a; }
+      for (const it of k.getElementsByTagName('Item')) { const a = attrs(it); a.kind = ka; a.el = it; D.items[a.ID] = a; }
     }
     // battle actions/skills: Type (1 physical, 4 heal, 7 magic ...), TargetAmount, User
     D.actions = {};

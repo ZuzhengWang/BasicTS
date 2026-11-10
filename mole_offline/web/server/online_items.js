@@ -265,3 +265,59 @@
     if (r.level > lv0 && M.pushLevelUp) M.pushLevelUp(c, r);
   });
 })(window);
+(function (G) {
+  'use strict';
+  const M = G.Mole;
+  const { ByteWriter, on, LOG, Data: D } = M;
+  // role properties given as "items" (client TaskOutputPersonPropertyType)
+  M.giveProp = function (r, id, n) {
+    if (id === 50001) r.xiaomee += n;
+    else if (id === 50002) { r.experience += n; M.levelCheck(r); }
+    else if (id === 50006) r.energy = (r.energy || 0) + n;
+    else if (id === 50007) r.honor = (r.honor || 0) + n;
+    else if (id >= 50003 && id <= 50009) { r.props = r.props || {}; r.props[id] = (r.props[id] || 0) + n; }
+    else return false;
+    return true;
+  };
+  const goodsOf = (id) => { const it = D.items[id]; return it && it.el ? Array.from(it.el.children).map(e => ({ tag: e.tagName, a: D.attrs(e) })) : []; };
+  function refresh(c, r, lv0) {
+    const h = M.onlineHandlers;
+    if (h[1109]) h[1109](Object.assign({}, c, { reply: (w) => c.conn.send(1109, c.uid, w, 0) }));
+    if (h[1102]) h[1102](Object.assign({}, c, { reply: (w) => c.conn.send(1102, c.uid, w, 0) }));
+    if (r.level > lv0 && M.pushLevelUp) M.pushLevelUp(c, r);
+  }
+  // 1129 USEITEM_EXCHANGE(itemID, count): item Type 8 (星豆袋, 经验手记...): <Goods ID Cnt="min max"/>
+  //   -> gained itemID, gained count, used count
+  on(1129, (c, rd) => {
+    const id = rd.u32(), n = Math.max(1, rd.u32()); const r = M.ensureRole(c.role());
+    const have = ((r.goods || []).find(g => g.goodID === id) || { count: 0 }).count;
+    const use = Math.min(n, have); if (!use) return c.reply(null, 200159);
+    const g = goodsOf(id).find(x => x.tag === 'Goods'); if (!g) return c.reply(null, 200153);
+    const gid = Number(String(g.a.ID).split(/\s+/)[0]); const rg = String(g.a.Cnt || '1').split(/\s+/).map(Number);
+    let tot = 0; for (let i = 0; i < use; i++) tot += Math.round(rg[0] + Math.random() * ((rg[1] || rg[0]) - rg[0]));
+    const lv0 = r.level;
+    M.takeGood(r, id, use);
+    if (!M.giveProp(r, gid, tot)) M.addItem(r, gid, tot);
+    M.saveRole(); LOG('use item', id, 'x' + use, '->', gid, tot);
+    c.reply(new ByteWriter().u32(gid).u32(tot).u32(use));
+    if (r.level > lv0 && M.pushLevelUp) M.pushLevelUp(c, r);
+  });
+  // 1127 EXCHANGE_BLESS_GIFT(itemID, count): item Type 4 gift boxes: <Goods ID="a b" Cnt="x y"/> <Clothes ID Cnt Lv/>
+  //   -> random exchange count 0 (the client then lists the box contents itself), cost items (id, count)*
+  on(1127, (c, rd) => {
+    const id = rd.u32(), n = Math.max(1, rd.u32()); const r = M.ensureRole(c.role());
+    const have = ((r.goods || []).find(g => g.goodID === id) || { count: 0 }).count;
+    const use = Math.min(n, have); if (!use) return c.reply(null, 200159);
+    const lv0 = r.level;
+    M.takeGood(r, id, use);
+    goodsOf(id).forEach(x => {
+      const ids = String(x.a.ID || '').split(/\s+/).filter(Boolean).map(Number), cnt = String(x.a.Cnt || '1').split(/\s+/).map(Number);
+      ids.forEach((gid, i) => { const k = (cnt[i] || cnt[0] || 1) * use;
+        if (x.tag === 'Clothes') { for (let j = 0; j < k; j++) { const e = M.makeEquip(r, gid); if (x.a.Lv && M.setEquipLevel) M.setEquipLevel(e, Number(x.a.Lv)); r.equips.push(e); } }
+        else if (!M.giveProp(r, gid, k)) M.addItem(r, gid, k); });
+    });
+    M.saveRole(); LOG('open gift', id, 'x' + use);
+    c.reply(new ByteWriter().u32(0).u32(1).u32(id).u32(use));
+    refresh(c, r, lv0);
+  });
+})(window);

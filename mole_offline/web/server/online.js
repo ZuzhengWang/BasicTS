@@ -80,6 +80,7 @@
       ctx.role = () => getRole(ctx.uid);
       ctx.reply = (body, result) => conn.send(p.cmd, ctx.uid, body, result);
       ctx.push = (cmd, body) => conn.send(cmd, ctx.uid, body, 0);
+      if (conn.state.uid) M.activeCtx = ctx;   // used by the modifier panel (modpanel.js)
       const h = handlers[p.cmd];
       if (!h) {
         unhandled[p.cmd] = (unhandled[p.cmd] || 0) + 1;

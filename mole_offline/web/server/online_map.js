@@ -80,4 +80,20 @@
   });
   // 1367 MAP_GET_ELITE_BEAST -> mapID, count + (beastID, elite, boss)*
   on(1367, (c) => c.reply(new ByteWriter().u32(c.role().mapID).u32(0)));
+
+  // 1136 MAP_GET_BOSS_INFO(first, last group id) -> count + (id, step u16, state u16, wins u32)*
+  // Boss maps (CleanBossPod, Map_302xx) wait for this before showing the boss / challenge
+  M.on(1136, (c, rd) => {
+    const a = rd.u32(), b = rd.u32(); const r = c.role(); r.bossInfo = r.bossInfo || {};
+    const ids = []; for (let i = Math.min(a, b); i <= Math.max(a, b) && ids.length < 20; i++) ids.push(i);
+    const w = new M.ByteWriter().u32(ids.length);
+    ids.forEach(id => { const x = r.bossInfo[id] || {}; w.u32(id).u16(x.step || 0).u16(x.state || 0).u32(x.count || 0); });
+    c.reply(w);
+  });
+  // 1137 MAP_SET_BOSS_INFO(id, step...) -> stored, empty reply
+  M.on(1137, (c, rd) => {
+    const r = c.role(); r.bossInfo = r.bossInfo || {};
+    if (rd.left >= 4) { const id = rd.u32(); const step = rd.left >= 2 ? rd.u16() : 0; r.bossInfo[id] = Object.assign(r.bossInfo[id] || {}, { step }); M.saveRole(); }
+    c.reply(new M.ByteWriter());
+  });
 })(window);

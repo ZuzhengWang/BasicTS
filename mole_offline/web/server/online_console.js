@@ -10,7 +10,7 @@
     const n = new TextEncoder().encode(nick || ''), m = new TextEncoder().encode(msg);
     c.push(1010, new ByteWriter().u32(senderID).u8(n.length).bytes(n).u32(toID).u32(m.length).bytes(m));
   }
-  const say = (c, msg) => String(msg).split('\n').forEach(line => chat(c, 50000, '控制台', 0, line));
+  const say = (c, msg) => { if (M.consoleSink) M.consoleSink(String(msg)); String(msg).split('\n').forEach(line => chat(c, 50000, '控制台', 0, line)); };
   M.consoleSay = say;
 
   // refresh the client after an edit (bag/equipment listeners are permanent in ItemsManager)
@@ -68,6 +68,7 @@
     additem: (c, a, r) => {
       const id = parseInt(a[0]), n = Math.max(1, Math.min(999, parseInt(a[1]) || 1));
       if (!D.items[id] && !D.equips[id]) return say(c, '没有这个物品ID: ' + a[0] + '（可用 /find 名字 查询）');
+      if (M.giveProp && M.giveProp(r, id, n)) { M.levelCheck(r); refreshRole(c, r); return say(c, '获得 ' + itemName(id) + ' ' + n + '（直接加到角色属性）'); }
       M.addItem(r, id, n); refreshBag(c); say(c, '获得 ' + itemName(id) + ' x' + n);
     },
     find: (c, a) => {
@@ -180,6 +181,18 @@
     goto: (c, a, r) => { const id = parseInt(a[0]); if (!D.maps[id]) return say(c, '没有这个地图: ' + a[0]); r.mapID = id; r.posX = 400; r.posY = 400; say(c, '下次登录将出现在 ' + id + ' ' + (D.maps[id].Name || '')); },
   };
 
+  // run a console line from the modifier panel on the active online connection
+  M.consoleCmds = cmds;
+  M.runConsole = function (line) {
+    const c = M.activeCtx; if (!c) return '请先登录进入游戏';
+    const r = M.ensureRole(c.role());
+    const parts = String(line).replace(/^[/／]/, '').trim().split(/\s+/); const name = (parts.shift() || '').toLowerCase();
+    const fn = cmds[name]; if (!fn) return '未知命令 ' + name;
+    const out = []; M.consoleSink = (m) => out.push(m);
+    try { fn(c, parts, r); M.saveRole(); } catch (e) { console.error(e); out.push('出错: ' + e.message); } finally { M.consoleSink = null; }
+    LOG('modpanel:', line);
+    return out.join('\n');
+  };
   // 1010 CHAT: toID u32, len u32, msg bytes
   on(1010, (c, rd) => {
     const toID = rd.u32(), len = rd.u32(); const msg = new TextDecoder().decode(rd.bytes(len)).replace(/\0+$/, '').replace(/0$/, '');   // ChatBehavior appends a literal "0"
