@@ -296,7 +296,7 @@
     const pct = desc.match(/提升(\d+)%物理攻击/);
     const mult = desc.match(/(\d+(?:\.\d+)?)倍/), base = desc.match(/基础伤害(\d+)/), heal = desc.match(/回复(\d+)/);
     return {
-      id, lv, type: +act.Type || 1, amount: +act.TargetAmount || 0, target: +act.ApplyTarget || 2,
+      id, lv, desc, type: +act.Type || 1, amount: +act.TargetAmount || 0, target: +act.ApplyTarget || 2,
       mp: info.mpA + info.mpB * Math.max(0, lv - 1),
       revive: /复活/.test(desc + ((M.skillInfo(id) || {}).name || '')), revivePct: (desc.match(/(\d+)%/) ? Number(desc.match(/(\d+)%/)[1]) / 100 : 0.3),
       mult: mult ? Number(mult[1]) : pct ? 1 + Number(pct[1]) / 100 : 1 + 0.1 * lv, base: base ? Number(base[1]) : 40 + 20 * lv, heal: heal ? Number(heal[1]) : 60 + 40 * lv,
@@ -339,8 +339,16 @@
         return [{ atkType: sk.id, level: lv, target: a }];
       }
       const tgts = targetsFor(foes, first && first.side !== a.side ? first : null, sk.amount);
+      if (sk.type === 2) {   // Mp攻击 (e.g. 破魂): drains the target's MP, no HP damage (percentage from Skill.xml text)
+        const pc = (sk.desc.match(/(\d+)%/) ? Number(sk.desc.match(/(\d+)%/)[1]) : 4 + 2 * lv) / 100;
+        return tgts.map(t => { const d = Math.min(t.mp, Math.max(1, Math.round(t.mp * pc + a.atk * 0.05)));
+          t.mp -= d; return { atkType: sk.id, level: lv, target: t, change_mp: -d }; });
+      }
+      if (sk.type === 8) {   // 异常状态魔法 (petrify/confuse/... fields): no HP damage; APPROX: status effects not simulated
+        return tgts.map(t => ({ atkType: sk.id, level: lv, target: t }));
+      }
       return tgts.map((t, i) => {
-        const r = (sk.type === 7 || sk.type === 8 || sk.type === 6) ? magicDamage(a, t, sk)
+        const r = (sk.type === 7 || sk.type === 6) ? magicDamage(a, t, sk)
           : (() => { const x = damage(a, t, defending.has(t)); x.dmg = Math.round(x.dmg * sk.mult); return x; })();
         t.hp = Math.max(0, t.hp - r.dmg);
         if (sk.type === 15 || sk.type === 6) { const h = Math.round(r.dmg * 0.3); a.hp = Math.min(a.hp_max, a.hp + h); }
@@ -360,7 +368,7 @@
       const s = m.spec.find(x => (k -= x.w) < 0) || m.spec[0];
       const act = D.actions[s.id];
       // only skills with knock-down (3) and knock-off (5) phases: a kill by a skill without them shows no fall
-      if (act && (!act.User || act.User === '1' || act.User === '2') && act.phases.includes(3) && act.phases.includes(5) && skillOf(s.id, 1)) return { actionID: s.id, level: Math.max(1, Math.min(10, Math.ceil(m.level / 10))), side: 0, pos: -1 };
+      if (act && (!act.User || act.User === '1' || act.User === '2') && (act.Type === '2' || (act.phases.includes(3) && act.phases.includes(5))) && skillOf(s.id, 1)) return { actionID: s.id, level: Math.max(1, Math.min(10, Math.ceil(m.level / 10))), side: 0, pos: -1 };
     }
     return { actionID: ACT.PET_ATTACK, side: 0, pos: -1 };
   }
