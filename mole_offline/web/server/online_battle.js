@@ -14,21 +14,36 @@
 
   const ACT = { ESCAPE: 1, NONE: 8, ATTACK: 10, DEFEND: 701, PET_NONE: 5008, PET_ATTACK: 5010, PET_DEFEND: 5701,
     ITEM: 4, CAPTURE: 6, CALL_PET: 7, CALL_AIDE: 12, AUTO: 1000000 };
+  const RESULT = { DRAW: 0, WIN: 1, LOSE: 2 };
   // BattleAvatarInfo.petState (module battle.swf PetStateType)
   const PS = { NOT_A_PET: 0, OUT_BATTLE: 2, IN_BATTLE: 3, AIDE_PET: 4, BEATING_PET: 5 };
   const CAPTURE_SUCCESS = 0x8000;
   // state2 bits for the hit that kills (module AvatarState): 2 knocked down (lies there), 4 knocked off the field.
   // Monsters and pets are knocked off (the client plays no fall for pets with bit 2), the role is knocked down.
   const ST2_KNOCK_DOWN = 2, ST2_RANGE_OUT = 4;
+  // other state2 bits of a hit (module AvatarState): 16 defending, 32 dodged, 1024 critical (暴击)
+  const ST2_DEFENSE = 16, ST2_AVOID = 32, ST2_BISHA = 1024;
+  function hitBits(r, t, defending) {
+    let v = 0;
+    if (r.miss) v |= ST2_AVOID;
+    if (r.crit) v |= ST2_BISHA;
+    if (defending && defending.has(t)) v |= ST2_DEFENSE;
+    return v;
+  }
+  // a kill: knocked off the field (击飞) only by a critical hit, otherwise knocked down (倒地) and it stays on the
+  // field (APPROX rule, as in the original game: a knocked-down avatar can still be revived)
   function markKills(loops) {
     loops.forEach(l => {
       const t = l.target;
-      if (t && (l.change_hp || 0) < 0 && t.hp <= 0 && !t.downShown) { t.downShown = true; l.state2 = (l.state2 || 0) | (t.isPet ? ST2_RANGE_OUT : ST2_KNOCK_DOWN); }
+      if (t && (l.change_hp || 0) < 0 && t.hp <= 0 && !t.downShown) {
+        t.downShown = true;
+        const off = (l.state2 & ST2_BISHA) !== 0;
+        if (off) t.knockedOff = true;
+        l.state2 = (l.state2 || 0) | (off ? ST2_RANGE_OUT : ST2_KNOCK_DOWN);
+      }
     });
     return loops;
-  }   // BattleActionLoopInfo.state2 bit (AvatarState.CAPTURE_SUCCESS)
-  const RESULT = { DRAW: 0, WIN: 1, LOSE: 2 };
-
+  }
   // ---------------------------------------------------------------- level table (embedded LevelExp xml in ClientCoreDLL)
   const LEVEL_EXP = [0, 0, 16, 65, 175, 369, 671, 1105, 1695, 2465, 3439, 4641, 6095, 7825, 9855, 12209, 14911, 17985, 21455, 25345];
   M.LEVEL_EXP = LEVEL_EXP;
@@ -278,6 +293,7 @@
     return {
       id, lv, type: +act.Type || 1, amount: +act.TargetAmount || 0, target: +act.ApplyTarget || 2,
       mp: info.mpA + info.mpB * Math.max(0, lv - 1),
+      revive: /复活/.test(desc + ((M.skillInfo(id) || {}).name || '')), revivePct: (desc.match(/(\d+)%/) ? Number(desc.match(/(\d+)%/)[1]) / 100 : 0.3),
       mult: mult ? Number(mult[1]) : pct ? 1 + Number(pct[1]) / 100 : 1 + 0.1 * lv, base: base ? Number(base[1]) : 40 + 20 * lv, heal: heal ? Number(heal[1]) : 60 + 40 * lv,
     };
   }
@@ -302,6 +318,12 @@
     if (sk && a.mp >= sk.mp) {
       a.mp -= sk.mp; a._mpCost = sk.mp;
       LOG('skill', a.nick, (M.skillInfo(sk.id) || {}).name, 'Lv' + lv, 'type', sk.type, 'mp -' + sk.mp);
+      if (sk.revive) {      // revive (复活) a knocked-down ally that was not knocked off the field
+        const down = friends.filter(f => f.hp <= 0 && !f.knockedOff && !f.captured);
+        const t = (first && down.includes(first)) ? first : down[0];
+        if (t) { t.hp = Math.max(1, Math.round(t.hp_max * sk.revivePct)); t.downShown = false;
+          return [{ atkType: sk.id, level: lv, target: t, change_hp: t.hp, state2: 4096 }]; }
+      }
       if (sk.type === 4) {   // HP recovery on own side
         const tgts = targetsFor(friends, first && first.side === a.side ? first : a, sk.amount);
         return tgts.map((t, i) => { const h = Math.max(0, Math.min(sk.heal, t.hp_max - t.hp)); t.hp += h;
@@ -317,14 +339,14 @@
           : (() => { const x = damage(a, t, defending.has(t)); x.dmg = Math.round(x.dmg * sk.mult); return x; })();
         t.hp = Math.max(0, t.hp - r.dmg);
         if (sk.type === 15 || sk.type === 6) { const h = Math.round(r.dmg * 0.3); a.hp = Math.min(a.hp_max, a.hp + h); }
-        return { atkType: sk.id, level: lv, target: t, change_hp: -r.dmg };
+        return { atkType: sk.id, level: lv, target: t, change_hp: -r.dmg, state2: hitBits(r, t, defending) };
       });
     }
     const tgt = (first && first.side !== a.side && first.hp > 0) ? first : pick(alive(foes));
     if (!tgt) return [];
     const r = damage(a, tgt, defending.has(tgt));
     tgt.hp = Math.max(0, tgt.hp - r.dmg);
-    return [{ atkType: a.isRole ? ACT.ATTACK : ACT.PET_ATTACK, target: tgt, change_hp: -r.dmg }];
+    return [{ atkType: a.isRole ? ACT.ATTACK : ACT.PET_ATTACK, target: tgt, change_hp: -r.dmg, state2: hitBits(r, tgt, defending) }];
   }
   // monster AI: SpecSkill by weight (APPROX 35% of turns), otherwise a normal attack on a random player
   function monsterCmd(m) {
