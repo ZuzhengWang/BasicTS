@@ -43,8 +43,8 @@
     '/items  背包物品 | /equips  背包和身上的装备',
     '/setequip 装备编号 属性 数值（编号可写 last 表示最新的装备）  属性: ' + Object.keys(EQ_ATTR).join(' '),
     '/delequip 装备编号 | /wear 装备编号 | /upequip 装备编号 等级（按 item_equip.xml 的等级属性强化）',
-    '/addpet 宠物类型ID [等级] | /pets  宠物列表 | /delpet 宠物编号',
-    '/setpet 宠物编号 属性 数值  属性: level exp growth nick status points ' + Object.keys(PET_BASE).slice(0, 5).join(' ') + ' ' + Object.keys(PET_ATTR).join(' '),
+    '/addpet 宠物类型ID [等级] [成长] | /pets  宠物列表 | /delpet 宠物编号',
+    '/setpet 宠物编号 属性 数值  属性: level exp growth(成长,上限65535) extra(转生附加成长,只影响显示) nick status points ' + Object.keys(PET_BASE).slice(0, 5).join(' ') + ' ' + Object.keys(PET_ATTR).join(' '),
     '/fightgrp 组ID  按怪物组开战（任务战斗，例如 19）',
     '/battlepets 3|9  上场宠物数量（3 原版，9 = 占满己方10个位置）',
     '/fight 怪物类型ID [等级] [数量]  立即开始一场战斗（方便测试捕捉）',
@@ -117,7 +117,8 @@
       const t = parseInt(a[0]), lv = Math.max(1, Math.min(200, parseInt(a[1]) || 1));
       const p = M.newPet(r, t, lv);
       if (!p) return say(c, '没有这个宠物类型: ' + a[0] + '（可用 /find 名字 查询）');
-      say(c, '获得宠物 [' + p.petid + '] ' + p.nick + ' Lv' + p.level + (p.status === 3 ? '（出战）' : '') + '，打开宠物面板查看');
+      const g = parseInt(a[2]); if (g > 0) { p.growValue = Math.min(65535, g); p.hp = null; p.mp = null; M.recalcPet(p); }
+      say(c, '获得宠物 [' + p.petid + '] ' + p.nick + ' Lv' + p.level + ' 成长' + p.growValue + (p.status === 3 ? '（出战）' : '') + '，打开宠物面板查看');
     },
     pets: (c, a, r) => say(c, M.petsOf(r).map(p => { M.recalcPet(p); return `[${p.petid}] ${p.nick}(类型${p.typeID}) Lv${p.level} 成长${p.growValue} 状态${p.status} HP${p.hp}/${p.hp_max} 攻${p.attack_value} 防${p.defense_value} 速${p.speed}`; }).join('\n') || '没有宠物'),
     delpet: (c, a, r) => { const id = parseInt(a[0]); r.pets = M.petsOf(r).filter(p => p.petid !== id); if (r.petID === id) M.setFollow(r, null); say(c, '已删除宠物 ' + id); },
@@ -128,7 +129,8 @@
       else if (isNaN(v)) return say(c, '数值不对: ' + raw);
       else if (f === 'level') { p.level = Math.max(1, Math.min(200, v)); p.experience = M.LEVEL_EXP[p.level] || p.experience; }
       else if (f === 'exp') { p.experience = v; M.petLevelCheck(p); }
-      else if (f === 'growth') p.growValue = v;
+      else if (f === 'growth') p.growValue = Math.max(0, Math.min(65535, v));
+      else if (f === 'extra') p.additionalGrowth = Math.max(0, Math.min(p.growValue || 0, v));
       else if (f === 'status') p.status = v;
       else if (f === 'points') p.attr_point_remaid = v;
       else if (PET_BASE[f]) { p.fixed = p.fixed || {}; p.fixed[PET_BASE[f]] = v; }

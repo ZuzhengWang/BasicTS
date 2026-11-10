@@ -32,12 +32,17 @@
   }
   // a kill: knocked off the field (击飞) only by a critical hit, otherwise knocked down (倒地) and it stays on the
   // field (APPROX rule, as in the original game: a knocked-down avatar can still be revived)
-  function markKills(loops) {
+  // The client plays the fall (phase 3) / knock-off (phase 5) from the attacking action's phases
+  // (BattleActionListConfig); 46 attack skills (e.g. 破魂 5501) have neither, so a kill by them left the target
+  // standing with an empty HP bar. Such a killing hit is shown as the actor's normal attack.
+  const hasPhase = (id, ph) => { const a = D.actions[id]; return !a || !a.phases || a.phases.includes(ph); };
+  function markKills(loops, actor) {
     loops.forEach(l => {
       const t = l.target;
       if (t && (l.change_hp || 0) < 0 && t.hp <= 0 && !t.downShown) {
         t.downShown = true;
         const off = (l.state2 & ST2_BISHA) !== 0;
+        if (!hasPhase(l.atkType, off ? 5 : 3)) l.atkType = actor && actor.isRole ? ACT.ATTACK : ACT.PET_ATTACK;
         if (off) t.knockedOff = true;
         l.state2 = (l.state2 || 0) | (off ? ST2_RANGE_OUT : ST2_KNOCK_DOWN);
       }
@@ -442,13 +447,13 @@
         } else if ([ACT.DEFEND, ACT.PET_DEFEND, ACT.NONE, ACT.PET_NONE].includes(cmd.actionID)) {
           acts.push({ actor: a, loops: [{ atkType: cmd.actionID, target: a }] });
         } else {
-          const loops = markKills(doAttack(a, cmd, b.monsters, b.players, defending));
+          const loops = markKills(doAttack(a, cmd, b.monsters, b.players, defending), a);
           if (!loops.length) break;
           acts.push({ actor: a, loops, mp: a._mpCost || 0 }); a._mpCost = 0;
         }
       } else {
         if (!alive(b.players).length) break;
-        const loops = markKills(doAttack(a, monsterCmd(a), b.players.filter(x => !(x.petState === PS.AIDE_PET && b.aidesAway)), b.monsters, defending));
+        const loops = markKills(doAttack(a, monsterCmd(a), b.players.filter(x => !(x.petState === PS.AIDE_PET && b.aidesAway)), b.monsters, defending), a);
         if (loops.length) acts.push({ actor: a, loops, mp: a._mpCost || 0 }); a._mpCost = 0;
       }
       if (!alive(b.monsters).length || !alive(b.players).length) break;
