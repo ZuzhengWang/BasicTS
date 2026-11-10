@@ -234,3 +234,34 @@
     c.reply(new ByteWriter().u32(0).u32(r.xiaomee).u32(uid).u16(e ? e.durationMax || 100 : 100).u16(e ? e.duration : 100));
   });
 })(window);
+(function (G) {
+  'use strict';
+  const M = G.Mole;
+  const { ByteWriter, on, LOG, Data: D } = M;
+  // ---- 1031 SET_NOT_ADD_POINT: claim the login award (LoadingAwardModul, shown after a map switch from Lv10 while
+  // role flag bit 21 is clear). Day = continueLoginDays, items from res/config/LoadingAwards.xml.
+  // -> count + (itemID, count)*; 5000x are role properties (50001 星豆, 50002 exp, ...)
+  let awards = null;
+  D.ready.then(() => D.fetchXML('res/config/LoadingAwards.xml')).then(doc => {
+    awards = {}; for (const e of doc.getElementsByTagName('Day')) awards[e.getAttribute('ID')] = D.attrs(e);
+  }).catch(e => LOG('awards', e));
+  on(1031, (c) => {
+    const r = M.ensureRole(c.role());
+    const day = Math.max(1, Math.min(5, r.continueLoginDays || 1));
+    const a = awards && awards[day];
+    const ids = a ? String(a.Items).split(/\s+/).map(Number) : [], cnt = a ? String(a.Count).split(/\s+/).map(Number) : [];
+    const lv0 = r.level;
+    ids.forEach((id, i) => {
+      const n = cnt[i] || 1;
+      if (id === 50001) r.xiaomee += n;
+      else if (id === 50002) { r.experience += n; M.levelCheck(r); }
+      else if (id >= 50003 && id <= 50009) { r.props = r.props || {}; r.props[id] = (r.props[id] || 0) + n; }
+      else M.addItem(r, id, n);
+    });
+    M.setFlag(r, 21, true); M.saveRole();
+    LOG('login award day', day, ids.join(','));
+    const w = new ByteWriter().u32(ids.length); ids.forEach((id, i) => w.u32(id).u32(cnt[i] || 1));
+    c.reply(w);
+    if (r.level > lv0 && M.pushLevelUp) M.pushLevelUp(c, r);
+  });
+})(window);

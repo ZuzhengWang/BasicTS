@@ -54,6 +54,13 @@
     ids.forEach(id => { w.u32(id); const hex = r.buffs[id]; const buf = new Uint8Array(512); for (let i = 0; i < Math.min(512, hex.length / 2); i++) buf[i] = parseInt(hex.substr(i * 2, 2), 16); w.bytes(buf); });
     c.reply(w);
   });
+  // 1168 ACTIVITY_SET_BUFF(buffID, 512 bytes) -> empty (stored, read back by 1167; NPC dialogs wait for the reply)
+  on(1168, (c, rd) => {
+    const id = rd.u32(); const r = ensure(c.role());
+    const data = rd.bytes(Math.min(512, rd.left));
+    r.buffs[id] = Array.from(data, x => x.toString(16).padStart(2, '0')).join('');
+    M.saveRole(); c.reply(new ByteWriter());
+  });
   // 1706 GET_RAND_RANGE (upper, lower) -> count + (id, count)*
   on(1706, (c, rd) => {
     const a = rd.u32(), b = rd.u32(); const lo = Math.min(a, b), hi = Math.max(a, b);

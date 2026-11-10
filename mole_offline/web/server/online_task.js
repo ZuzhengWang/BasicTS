@@ -27,6 +27,14 @@
 
   const now = () => Math.floor(Date.now() / 1000);
   function tasks(r) { r.tasks = r.tasks || {}; return r.tasks; }
+  // finished state for TaskInfo (client TaskInfoStateType): 2 finished for good, 3 finished but can be redone
+  // (task_summary RepeatType > 0); 0 = cancelled
+  function finishedState(taskID) {
+    const s = summary && summary[taskID];
+    const rep = s && s.el ? Number(s.el.getAttribute('RepeatType') || 0) : 0;
+    return rep > 0 ? 3 : 2;
+  }
+  M.finishedState = finishedState;
   // the client ends a task at the node marked IsEnd (TaskUtils.readBoolean(node, 'IsEnd')); fall back to the last node
   function isEndNode(taskID, nodeID) {
     const s = summary && summary[taskID]; if (!s || !s.nodes.length) return false;
@@ -39,7 +47,10 @@
   // older saves: tasks whose last submitted node was an end node but were left "playing"
   M.repairTasks = function (r) {
     Object.values(tasks(r)).forEach(t => {
-      if (t.playing && t.curNodeID && isEndNode(t.taskID, t.curNodeID)) { t.playing = false; t.state = 1; t.finishCount = Math.max(1, t.finishCount || 0); if (!t.firstFinishTime) t.firstFinishTime = now(); }
+      // re-accepted by mistake (client did not see it as finished): non-repeatable, finished before, no progress
+      if (t.playing && !t.curNodeID && t.finishCount > 0 && finishedState(t.taskID) === 2) t.playing = false;
+      if (!t.playing && (t.finishCount > 0 || t.firstFinishTime) && t.state !== 2 && t.state !== 3) t.state = finishedState(t.taskID);   // saves before v0.4.6 used 1
+      if (t.playing && t.curNodeID && isEndNode(t.taskID, t.curNodeID)) { t.playing = false; t.state = finishedState(t.taskID); t.finishCount = Math.max(1, t.finishCount || 0); if (!t.firstFinishTime) t.firstFinishTime = now(); }
     });
   };
 
@@ -53,9 +64,14 @@
       if (!(id === setID || id === 255 || (id === 0 && !(tasks(r)[taskID] || {}).finishCount))) continue;
       for (const it of out.getElementsByTagName('Item')) {
         const type = Number(it.getAttribute('OutType')), item = Number(it.getAttribute('ItemId')), cnt = Number(it.getAttribute('Count') || 1);
-        if (type === 1 && item === 1) r.xiaomee += cnt;
-        else if (type === 1 && (item === 2 || item === 3)) { r.experience += cnt; M.levelCheck && M.levelCheck(r); }
+        // OutType (client TaskOutPutType): 1 role property (itemInfo 5000x: 50001 星豆, 50002 经验, 50006 精力,
+        // 50007 荣誉; 1/2/3 in older data), 2 item, 3 pet (ItemId = pet type), 4 equipment, 5 skill, 7 application
+        if (type === 1 && (item === 50001 || item === 1)) r.xiaomee += cnt;
+        else if (type === 1 && (item === 50002 || item === 2 || item === 3)) { r.experience += cnt; M.levelCheck && M.levelCheck(r); }
+        else if (type === 1 && item === 50006) r.energy = (r.energy || 0) + cnt;
+        else if (type === 1 && item === 50007) r.honor = (r.honor || 0) + cnt;
         else if (type === 2 || type === 4) M.addItem(r, item, cnt);
+        else if (type === 3 && M.newPet) M.newPet(r, item, 1);
         else { (r.unlocks = r.unlocks || []).push({ type, item, cnt }); }
         got.push({ type, item, cnt });
       }
@@ -105,14 +121,15 @@
     const taskID = rd.u32(), nodeID = rd.u32(), setID = rd.u32(), buf = rd.bytes(128), dataID = rd.u32();
     const r = M.ensureRole(c.role()); const ts = tasks(r);
     const t = ts[taskID] || (ts[taskID] = { taskID, playing: true, finishCount: 0, firstFinishTime: 0 });
+    const lv0 = r.level;
     const got = grantNodeOutput(r, taskID, nodeID, setID);
     t.curNodeID = nodeID; t.buffer = M.bytesToHex(buf); t.optDate = now();
     const s = summary && summary[taskID];
     const last = isEndNode(taskID, nodeID);
-    if (last) { t.playing = false; t.state = 1; t.finishCount = (t.finishCount || 0) + 1; if (!t.firstFinishTime) t.firstFinishTime = now(); }
+    if (last) { t.playing = false; t.state = finishedState(taskID); t.finishCount = (t.finishCount || 0) + 1; if (!t.firstFinishTime) t.firstFinishTime = now(); }
     M.saveRole(); LOG('task node', taskID, nodeID, 'set', setID, last ? '(task complete)' : '', 'rewards', JSON.stringify(got));
-    c.reply(new ByteWriter().u32(taskID).u32(dataID).u32(nodeID).u32(setID).u32(0).u32(0));
-    if (got.length) M.pushRoleRefresh && M.pushRoleRefresh(c);
+    c.reply(new ByteWriter().u32(taskID).u32(dataID).u32(nodeID).u32(setID).u32(last && t.state === 3 ? 1 : 0).u32(0));
+    if (r.level > lv0 && M.pushLevelUp) M.pushLevelUp(c, r);
   });
   // 1165 TASK_SUBMIT_BUFFER: taskID, buffer[128], dataID -> taskID, dataID
   on(1165, (c, rd) => {
@@ -124,7 +141,7 @@
   // 1164 TASK_ABANDON: taskID -> taskID
   on(1164, (c, rd) => {
     const taskID = rd.u32(); const r = M.ensureRole(c.role()); const t = tasks(r)[taskID];
-    if (t && t.playing) { if (t.finishCount) { t.playing = false; } else delete tasks(r)[taskID]; M.saveRole(); }
+    if (t && t.playing) { if (t.finishCount) { t.playing = false; t.state = finishedState(taskID); } else delete tasks(r)[taskID]; M.saveRole(); }
     c.reply(new ByteWriter().u32(taskID));
   });
   // 1170 TASK_GET_TASK_NODE_COUNT -> count
