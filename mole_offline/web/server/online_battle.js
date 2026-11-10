@@ -23,7 +23,7 @@
   function markKills(loops) {
     loops.forEach(l => {
       const t = l.target;
-      if (t && (l.change_hp || 0) < 0 && t.hp <= 0 && !t.downShown) { t.downShown = true; l.state2 = (l.state2 || 0) | (t.isRole ? ST2_KNOCK_DOWN : ST2_RANGE_OUT); }
+      if (t && (l.change_hp || 0) < 0 && t.hp <= 0 && !t.downShown) { t.downShown = true; l.state2 = (l.state2 || 0) | (t.isPet ? ST2_RANGE_OUT : ST2_KNOCK_DOWN); }
     });
     return loops;
   }   // BattleActionLoopInfo.state2 bit (AvatarState.CAPTURE_SUCCESS)
@@ -198,9 +198,9 @@
   }
 
   // BattleActionInfo + BattleActionLoopInfo
-  function writeAction(w, seq, actor, loops) {
+  function writeAction(w, seq, actor, loops, mp) {
     w.u32(seq).u32(actor.userID).u32(actor.petID).u32(0).u32(0).u32(0).u32(0)
-      .i32(0).i32(0).i32(0).i32(0)        // talkId, hp_change, mp_change, sheild_change
+      .i32(0).i32(0).i32(-(mp || 0)).i32(0)   // talkId, hp_change, mp_change (actor's skill cost), sheild_change
       .u32(0).u32(0).u16(0)               // jisheng
       .u16(loops.length);
     loops.forEach(l => {
@@ -300,16 +300,16 @@
     const sk = skillOf(cmd.actionID, lv);
     const first = cmd.side === (a.side === 0 ? 1 : 0) ? foes.find(m => m.posIdx === cmd.pos) : (cmd.side === a.side ? friends.find(m => m.posIdx === cmd.pos) : null);
     if (sk && a.mp >= sk.mp) {
-      a.mp -= sk.mp;
+      a.mp -= sk.mp; a._mpCost = sk.mp;
       LOG('skill', a.nick, (M.skillInfo(sk.id) || {}).name, 'Lv' + lv, 'type', sk.type, 'mp -' + sk.mp);
       if (sk.type === 4) {   // HP recovery on own side
         const tgts = targetsFor(friends, first && first.side === a.side ? first : a, sk.amount);
         return tgts.map((t, i) => { const h = Math.max(0, Math.min(sk.heal, t.hp_max - t.hp)); t.hp += h;
-          return { atkType: sk.id, level: lv, target: t, change_hp: h, change_mp: i === 0 ? -sk.mp : 0 }; });
+          return { atkType: sk.id, level: lv, target: t, change_hp: h }; });
       }
       if ([3, 5, 9, 17].includes(sk.type)) {   // defensive skills: treated as defending this round
         defending.add(a);
-        return [{ atkType: sk.id, level: lv, target: a, change_mp: -sk.mp }];
+        return [{ atkType: sk.id, level: lv, target: a }];
       }
       const tgts = targetsFor(foes, first && first.side !== a.side ? first : null, sk.amount);
       return tgts.map((t, i) => {
@@ -317,7 +317,7 @@
           : (() => { const x = damage(a, t, defending.has(t)); x.dmg = Math.round(x.dmg * sk.mult); return x; })();
         t.hp = Math.max(0, t.hp - r.dmg);
         if (sk.type === 15 || sk.type === 6) { const h = Math.round(r.dmg * 0.3); a.hp = Math.min(a.hp_max, a.hp + h); }
-        return { atkType: sk.id, level: lv, target: t, change_hp: -r.dmg, change_mp: i === 0 ? -sk.mp : 0 };
+        return { atkType: sk.id, level: lv, target: t, change_hp: -r.dmg };
       });
     }
     const tgt = (first && first.side !== a.side && first.hp > 0) ? first : pick(alive(foes));
@@ -422,17 +422,17 @@
         } else {
           const loops = markKills(doAttack(a, cmd, b.monsters, b.players, defending));
           if (!loops.length) break;
-          acts.push({ actor: a, loops });
+          acts.push({ actor: a, loops, mp: a._mpCost || 0 }); a._mpCost = 0;
         }
       } else {
         if (!alive(b.players).length) break;
         const loops = markKills(doAttack(a, monsterCmd(a), b.players.filter(x => !(x.petState === PS.AIDE_PET && b.aidesAway)), b.monsters, defending));
-        if (loops.length) acts.push({ actor: a, loops });
+        if (loops.length) acts.push({ actor: a, loops, mp: a._mpCost || 0 }); a._mpCost = 0;
       }
       if (!alive(b.monsters).length || !alive(b.players).length) break;
     }
     const w = new ByteWriter().u32(acts.length);
-    acts.forEach((x, i) => writeAction(w, i + 1, x.actor, x.loops));
+    acts.forEach((x, i) => writeAction(w, i + 1, x.actor, x.loops, x.mp));
     c.push(1310, w);
     c.push(1311, writeSync(b));
     LOG('round', b.round, 'hp', b.players.concat(b.monsters).map(a => a.nick + ':' + a.hp + '/' + a.hp_max).join(' '));

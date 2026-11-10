@@ -54,6 +54,24 @@
     });
   };
 
+  function learnSkill(r, id) {
+    r.skills = r.skills || [];
+    if (!r.skills.some(k => k.id === id)) { r.skills.push({ id, lv: 1, exp: 0 }); LOG('learned role skill', id); }
+  }
+  // finished tasks before v0.4.7 did not teach their skill rewards (OutType 5): add them
+  M.repairTaskSkills = function (r) {
+    if (!summary) return;
+    Object.values(tasks(r)).filter(t => !t.playing && t.finishCount > 0).forEach(t => {
+      const s = summary[t.taskID]; if (!s) return;
+      s.nodes.forEach(n => { for (const it of n.getElementsByTagName('Item')) if (it.getAttribute('OutType') === '5') {
+        // only the profession's own skills: OutItem sets can be per profession, so check the skill's Prof bit
+        const id = Number(it.getAttribute('ItemId'));
+        const info = M.skillInfo && M.skillInfo(id); const sk = D.skillDoc && Array.from(D.skillDoc.getElementsByTagName('Skill')).find(e => e.getAttribute('ID') === String(id));
+        const prof = sk ? Number(sk.getAttribute('Prof') || -1) : -1;
+        if (prof === -1 || (prof & (1 << (r.professtion || 1)))) learnSkill(r, id);
+      } });
+    });
+  };
   // OutType: 1 role attribute (ItemId 1 xiaomee, 2/3 exp), 2 item, 4 equipment; others recorded only
   function grantNodeOutput(r, taskID, nodeID, setID) {
     const t = summary && summary[taskID]; if (!t) return [];
@@ -72,6 +90,7 @@
         else if (type === 1 && item === 50007) r.honor = (r.honor || 0) + cnt;
         else if (type === 2 || type === 4) M.addItem(r, item, cnt);
         else if (type === 3 && M.newPet) M.newPet(r, item, 1);
+        else if (type === 5) learnSkill(r, item);
         else { (r.unlocks = r.unlocks || []).push({ type, item, cnt }); }
         got.push({ type, item, cnt });
       }

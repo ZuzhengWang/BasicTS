@@ -4,7 +4,8 @@ const { chromium } = require('playwright');
   const [url, secs, out, actions] = process.argv.slice(2);
   const b = await chromium.launch({ args: ['--enable-unsafe-swiftshader', '--use-gl=swiftshader', '--autoplay-policy=no-user-gesture-required', '--ignore-gpu-blocklist'] });
   const SC = parseFloat(process.env.SCALE || '1');
-  const pg = await b.newPage({ viewport: { width: Math.round(990 * SC), height: Math.round(560 * SC) } });
+  const pg = await b.newPage({ viewport: { width: Math.round(990 * SC), height: Math.round(560 * SC) }, hasTouch: !!process.env.TOUCH });
+  if (process.env.THROTTLE) { const cdp = await pg.context().newCDPSession(pg); await cdp.send('Emulation.setCPUThrottlingRate', { rate: Number(process.env.THROTTLE) }); }
   const seen = [];
   pg.on('console', m => { const t = m.text(); seen.push(t); console.log('[console]', t.slice(0, 600)); });
   const waitFor = async (txt, ms) => { const t0 = Date.now(); let from = 0;
@@ -32,6 +33,8 @@ const { chromium } = require('playwright');
     if (a.log) console.log('[runner]', a.log);
     if (a.reload) { seen.length = 0; await pg.reload(); }
     if (a.evalLog) console.log('[runner] eval', JSON.stringify(await pg.evaluate(a.evalLog)));
+    if (a.tap) await pg.touchscreen.tap(a.tap[0] * SC, a.tap[1] * SC);
+    if (a.move) await pg.mouse.move(a.move[0] * SC, a.move[1] * SC, { steps: 5 });
     if (a.click) await pg.mouse.click(a.click[0] * SC, a.click[1] * SC);
     if (a.dblclick) await pg.mouse.dblclick(a.dblclick[0] * SC, a.dblclick[1] * SC);
     if (a.clear) { await pg.keyboard.press('End'); for (let i = 0; i < a.clear; i++) await pg.keyboard.press('Backspace'); }

@@ -44,3 +44,23 @@ ins = ins_of(dst, L2)
 i = [k for k, x in enumerate(ins) if x[1] == 'findpropstrict' and x[2].endswith('_prepareBmpActionAvatarList')][0]
 j = next(k for k in range(i, len(ins)) if ins[k][1] == 'pop')
 nop(dst, L2, ins[i][0], ins[j + 1][0])
+
+
+# 3. NewDLL ItemTipsController.onMouseDown: touch screens have no hover, so item tooltips never opened on the phone,
+#    and a tap (mouse down) removed them. Now a tap opens the tooltip; it closes on mouse out (tapping elsewhere).
+for dll in ('dll/NewDLL.swf', 'dll/ClientCoreDLL.swf'):
+    L3 = 'com.mole2.core.ui.tips::ItemTipsController/static onMouseDown'
+    try:
+        ins = ins_of(os.path.join(client, dll), L3)
+    except KeyError:
+        continue
+    # findpropstrict removeTips; callproperty removeTips 0; pop
+    k = [i for i, x in enumerate(ins) if x[1] in ('callproperty', 'callpropvoid') and x[2].endswith('removeTips')][0]
+    a = ins[k - 1][0]; b = ins[k + 2][0] if ins[k + 1][1] == 'pop' else ins[k + 1][0]
+    # replace removeTips() with onMouseRollOver(event): a tap opens the tooltip of the tapped item
+    def show(abc):
+        m = [i for i in range(1, len(abc.mn)) if str(abc.mname(i)).split('::')[-1] == 'onMouseRollOver'
+             and 'ItemTipsController' in str(abc.mname(i))] or [P.multiname_index(abc, 'onMouseRollOver')]
+        return b'\x5d' + P.u30(m[0]) + b'\xd1' + b'\x4f' + P.u30(m[0]) + b'\x01'
+    P.patch_swf(os.path.join(client, dll), os.path.join(web, dll), L3, [(a, b - a, show)], extra_stack=1)
+    print('patched', dll, 'ItemTipsController.onMouseDown')
