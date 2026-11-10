@@ -4,13 +4,27 @@ const { chromium } = require('playwright');
   const [url, secs, out, actions] = process.argv.slice(2);
   const b = await chromium.launch({ args: ['--enable-unsafe-swiftshader', '--use-gl=swiftshader', '--autoplay-policy=no-user-gesture-required', '--ignore-gpu-blocklist', ...(process.env.EXTRA_ARGS ? process.env.EXTRA_ARGS.split(' ') : [])] });
   const SC = parseFloat(process.env.SCALE || '1');
-  const pg = await b.newPage({ viewport: { width: Math.round(990 * SC), height: Math.round(560 * SC) }, hasTouch: !!process.env.TOUCH });
+  const pg = await b.newPage({ viewport: { width: Math.round(990 * SC), height: Math.round(560 * SC) }, hasTouch: !!process.env.TOUCH, deviceScaleFactor: parseFloat(process.env.DPR || '1') });
+  if (process.env.MEMLOG) { const { execSync } = require('child_process'); const t0 = Date.now();
+    setInterval(() => { try { const out = execSync("ps -eo rss,args | grep -a [h]eadless_shell | awk '{t=\"browser\"; for(i=2;i<=NF;i++) if ($i ~ /^--type=/) t=substr($i,8); s[t]+=$1} END {for (k in s) printf \"%s=%dMB \", k, s[k]/1024}'").toString().trim();
+      console.log('[mem] ' + ((Date.now() - t0) / 1000).toFixed(0) + 's ' + out); } catch (e) { } }, +(process.env.MEMLOG) * 1000 || 5000).unref(); }
   if (process.env.THROTTLE) { const cdp = await pg.context().newCDPSession(pg); await cdp.send('Emulation.setCPUThrottlingRate', { rate: Number(process.env.THROTTLE) }); }
   const seen = [];
   pg.on('console', m => { const t = m.text(); seen.push(t); console.log('[console]', t.slice(0, 600)); });
   const waitFor = async (txt, ms) => { const t0 = Date.now(); let from = 0;
     while (Date.now() - t0 < ms) { if (seen.some(x => x.includes(txt))) return true; await pg.waitForTimeout(250); }
     console.log('[runner] TIMEOUT waiting for', txt); return false; };
+  if (process.env.PROFILE_ON) {   // CPU profile for PROFILE_SECS after a console line containing PROFILE_ON
+    const cdp = await pg.context().newCDPSession(pg); await cdp.send('Profiler.enable'); await cdp.send('Profiler.setSamplingInterval', { interval: 2000 });
+    let started = false;
+    pg.on('console', async m => { if (started || !m.text().includes(process.env.PROFILE_ON)) return; started = true;
+      await cdp.send('Profiler.start'); console.log('[runner] profile start');
+      setTimeout(async () => { const { profile } = await cdp.send('Profiler.stop');
+        const self = {}; const byId = {}; profile.nodes.forEach(n => byId[n.id] = n);
+        const dt = profile.timeDeltas; profile.samples.forEach((id, i) => { const n = byId[id]; const k = n.callFrame.functionName || '(anon ' + n.callFrame.url.split('/').pop() + ')'; self[k] = (self[k] || 0) + (dt[i] || 0); });
+        Object.entries(self).sort((a, b) => b[1] - a[1]).slice(0, 40).forEach(([k, v]) => console.log('[prof] ' + (v / 1000).toFixed(0) + 'ms ' + k.slice(0, 160)));
+        require('fs').writeFileSync(process.env.PROFILE_OUT || '/tmp/prof.json', JSON.stringify(profile)); }, (+process.env.PROFILE_SECS || 15) * 1000); });
+  }
   pg.on('pageerror', e => console.log('[pageerror]', e.message));
   if (process.env.SEED_FILE) {
     const seed = require('fs').readFileSync(process.env.SEED_FILE, 'utf8');

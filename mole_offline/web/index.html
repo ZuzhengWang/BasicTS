@@ -69,6 +69,18 @@
     ],
   };
 </script>
+<script>
+  // Memory: Ruffle sizes its drawing surface by devicePixelRatio. Phones report about 3, i.e. 9x the pixels
+  // of the game's own 990x560 stage, and every frame buffer / cached bitmap grows with it. Cap it (default 1;
+  // ?dpr= for tests, 0 = no cap; the modifier's 画面 tab saves a choice).
+  (function () {
+    let cap = 1; try { const v = localStorage.getItem('mole_dpr'); if (v !== null) cap = parseFloat(v); } catch (e) { }
+    const qd = new URLSearchParams(location.search).get('dpr'); if (qd !== null) cap = parseFloat(qd);
+    const real = window.devicePixelRatio || 1; window.__moleRealDpr = real;
+    if (cap > 0 && real > cap) { try { Object.defineProperty(window, 'devicePixelRatio', { get: () => cap, configurable: true }); } catch (e) { } }
+    window.__moleDpr = Math.min(real, cap > 0 ? cap : real);
+  })();
+</script>
 <script src="ruffle/ruffle.js"></script>
 </head>
 <body>

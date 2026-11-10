@@ -73,3 +73,38 @@ for src_rel, dst_rel in [('res/MinMap', 'res/minMap')]:
     if os.path.isdir(s):
         shutil.rmtree(d, ignore_errors=True); shutil.copytree(s, d)
         print('alias', src_rel, '->', dst_rel)
+
+# 5. MapModel.makeMapPathData: the walkable / safe area layers are drawn into BitmapData and then read with one
+#    getPixel32 per grid cell. Under Ruffle (wgpu) each read of a GPU-drawn bitmap copies a small region back from the GPU,
+#    and those copies pile up until the script ends: entering 勇士大厅 (11302) took 26 s and the GPU process grew by
+#    about 8 GB (measured), which kills the game on a phone. One getColorBoundsRect() first syncs the whole bitmap to
+#    the CPU once, so the per-cell reads no longer touch the GPU.
+def u30at(c, p):
+    v = sh = 0
+    while True:
+        b = c[p]; p += 1; v |= (b & 0x7f) << sh; sh += 7
+        if not b & 0x80: return v
+L5 = 'com.mole2.core.map::MapModel/makeMapPathData'
+for dll in ('dll/NewDLL.swf', 'dll/ClientCoreDLL.swf'):
+    path = os.path.join(web, dll)
+    if not os.path.exists(path): shutil.copy(os.path.join(client, dll), path)
+    try:
+        ins = ins_of(path, L5)
+    except KeyError:
+        continue
+    P.add_names(path, path, ['getColorBoundsRect'])
+    at = [a for a, nm, x in ins if nm == 'pushscope'][0] + 1
+    def sync(abc):
+        mi = P.find_method(abc, L5); c = abc.methods[mi]['body']['code']
+        idx = {}
+        for a, nm, args in S.disasm(abc, c):
+            if nm == 'getproperty' and str(args[0]).endswith(('_walkableMapBmd', '_safeMapBmd')):
+                idx[str(args[0]).split('_')[-1]] = u30at(c, a + 1)
+        g = P.multiname_index(abc, 'getColorBoundsRect')
+        call = b'\x24\x00\x24\x00\x26' + b'\x4f' + P.u30(g) + b'\x03'      # (0, 0, true) -> discard
+        w = b'\xd0\x66' + P.u30(idx['walkableMapBmd']) + call
+        sget = b'\xd0\x66' + P.u30(idx['safeMapBmd'])
+        sbody = sget + call
+        return w + sget + b'\x12' + P.s24(len(sbody)) + sbody             # if (_safeMapBmd) sync it too
+    P.patch_swf(path, path, L5, [(at, 0, sync)])
+    print('patched', dll, 'MapModel.makeMapPathData (bitmap sync)')

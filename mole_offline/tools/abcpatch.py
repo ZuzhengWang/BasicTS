@@ -125,7 +125,9 @@ def add_names(src, dst, names):
         o = abc.off
         R = S.R(abcdata); R.p = o['str']; nstr = R.u30(); str_count_len = R.p - o['str']
         R.p = o['mn']; nmn = R.u30(); mn_count_len = R.p - o['mn']
-        pkg = [i for i, (k, sidx) in enumerate(abc.ns) if k == 0x16 and (not sidx or abc.strings[sidx] == '')][0]
+        pkg = [i for i, (k, sidx) in enumerate(abc.ns) if k == 0x16 and (not sidx or abc.strings[sidx] == '')]
+        if not pkg: continue   # block without the public namespace (no code that could use the name)
+        pkg = pkg[0]
         add_s = b''.join(u30(len(n.encode())) + n.encode() for n in new)
         add_m = b''.join(b'\x07' + u30(pkg) + u30(nstr + i) for i, n in enumerate(new))
         a = bytes(abcdata)
