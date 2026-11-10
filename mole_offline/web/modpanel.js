@@ -32,7 +32,7 @@
   box.innerHTML = '<header><b>修改器</b></header><main></main><footer>点上面的分类开始。修改会立即保存到本地存档。</footer>';
   document.body.appendChild(box);
   const head = box.querySelector('header'), main = box.querySelector('main'), foot = box.querySelector('footer');
-  const tabs = { item: '物品/装备', pet: '加宠物', mypet: '我的宠物', myequip: '我的装备', role: '角色', gfx: '画面' };
+  const tabs = { item: '物品/装备', pet: '加宠物', mypet: '我的宠物', myequip: '我的装备', role: '角色', task: '任务', gfx: '画面' };
   let cur = 'item';
   Object.keys(tabs).forEach(k => { const b = document.createElement('button'); b.className = 'tab'; b.textContent = tabs[k]; b.dataset.k = k; b.onclick = () => show(k); head.appendChild(b); });
   const xb = document.createElement('button'); xb.className = 'x'; xb.textContent = '×'; xb.onclick = () => { box.style.display = 'none'; }; head.appendChild(xb);
@@ -68,7 +68,7 @@
     cur = k; head.querySelectorAll('.tab').forEach(b => b.classList.toggle('on', b.dataset.k === k));
     main.innerHTML = '';
     if (!role() && k !== 'item' && k !== 'pet' && k !== 'gfx') { main.innerHTML = '<p>请先登录并进入游戏地图。</p>'; return; }
-    ({ item: itemTab, pet: petTab, mypet: myPetTab, myequip: myEquipTab, role: roleTab, gfx: gfxTab })[k]();
+    ({ item: itemTab, pet: petTab, mypet: myPetTab, myequip: myEquipTab, role: roleTab, task: taskTab, gfx: gfxTab })[k]();
   }
 
   // ---- search & add items / equipment
@@ -174,6 +174,35 @@
       main.appendChild(card);
     });
     main.appendChild(el('<p class="muted">穿着的装备改完后，重新打开个人秀或重新登录界面才完全刷新。</p>'));
+  }
+
+  // ---- tasks: finish a task without playing it (e.g. its map does not load on the phone)
+  function taskTab() {
+    const r = role();
+    const finish = (id) => {
+      const name = M.taskName(id) || id;
+      if (!confirm('直接完成任务「' + name + '」并领取剩余奖励？完成后游戏会重新载入（进度已保存）。')) return;
+      const msg = M.forceFinishTask(r, id); foot.textContent = msg; alert(msg);
+      if (/^已完成/.test(msg)) location.reload();
+    };
+    const row = (t, state) => {
+      const d = el('<div style="display:flex;align-items:center;gap:6px;margin:4px 0"><span style="flex:1">' + esc(t.id) + ' ' + esc(t.name) +
+        (t.level ? ' <small>Lv' + esc(t.level) + '</small>' : '') + ' <small>[' + esc(state) + ']</small></span></div>');
+      if (state !== '已完成') { const b = el('<button class="tab">直接完成</button>'); b.onclick = () => finish(t.id); d.appendChild(b); }
+      return d;
+    };
+    main.appendChild(el('<p><b>进行中的任务</b>（进不去的地图、打不过的战斗，可以直接完成）</p>'));
+    const cur = M.taskPlaying(r);
+    if (!cur.length) main.appendChild(el('<p style="color:#888">没有进行中的任务。</p>'));
+    cur.forEach(t => main.appendChild(row(t, '进行中')));
+    main.appendChild(el('<p><b>搜索任务</b>（还没接的任务也可以完成，例如要在勇士大厅接的任务）</p>'));
+    const box2 = el('<div><input placeholder="任务名或ID" style="width:60%;font-size:15px"> <button class="tab">搜索</button><div></div></div>');
+    const inp = box2.querySelector('input'), res = box2.querySelector('div');
+    const go = () => { res.innerHTML = ''; const list = M.taskSearch(inp.value);
+      if (!list.length) res.appendChild(el('<p style="color:#888">没有找到。</p>'));
+      list.forEach(t => res.appendChild(row(t, M.taskStateOf(r, t.id)))); };
+    box2.querySelector('button').onclick = go; inp.onkeydown = (e) => { if (e.key === 'Enter') go(); };
+    main.appendChild(box2);
   }
 
   // ---- renderer (phones differ from desktop: Ruffle picks WebGPU / WebGL / canvas by itself)

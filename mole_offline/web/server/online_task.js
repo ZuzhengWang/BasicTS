@@ -98,6 +98,42 @@
     return got;
   }
 
+  // ---- modifier (修改器「任务」): finish a task without playing it, e.g. when its map cannot be entered on the phone.
+  // Gives the rewards of every node not submitted yet (output set 1, the set nearly all tasks use), marks the task
+  // finished like a normal end node. The client reads tasks at login, so the page reloads afterwards.
+  const taskName = (id) => { const t = summary && summary[id]; return t ? (t.el.getAttribute('Name') || '') : ''; };
+  M.taskName = taskName;
+  M.taskStateOf = function (r, id) {
+    const t = tasks(r)[id];
+    if (!t) return '未接';
+    if (t.playing) return '进行中';
+    return t.finishCount > 0 ? '已完成' : '未接';
+  };
+  M.taskPlaying = (r) => Object.values(tasks(r)).filter(t => t.playing).map(t => ({ id: t.taskID, name: taskName(t.taskID), node: t.curNodeID || 0 }));
+  M.taskSearch = function (q) {
+    if (!summary) return [];
+    q = String(q || '').trim(); if (!q) return [];
+    return Object.keys(summary).filter(id => summary[id].nodes.length && (id === q || taskName(id).includes(q)))
+      .slice(0, 40).map(id => ({ id: Number(id), name: taskName(id), level: Number(summary[id].el.getAttribute('Level') || 0) }));
+  };
+  M.forceFinishTask = function (r, taskID) {
+    const s = summary && summary[taskID]; if (!s || !s.nodes.length) return '找不到任务 ' + taskID;
+    const ts = tasks(r);
+    const t = ts[taskID] || (ts[taskID] = { taskID, playing: true, curNodeID: 0, finishCount: 0, firstFinishTime: 0, optDate: now() });
+    if (!t.playing && t.finishCount > 0 && finishedState(taskID) === 2) return '任务已经完成过了';
+    const ids = s.nodes.map(n => n.getAttribute('ID'));
+    let from = t.curNodeID ? ids.indexOf(String(t.curNodeID)) + 1 : 0;
+    const endAt = s.nodes.findIndex(n => isEndNode(taskID, n.getAttribute('ID')));
+    const last = endAt >= 0 ? endAt : ids.length - 1;
+    const lv0 = r.level; const got = [];
+    for (let i = from; i <= last; i++) got.push(...grantNodeOutput(r, taskID, ids[i], 1));
+    t.curNodeID = Number(ids[last]); t.playing = false; t.state = finishedState(taskID);
+    t.finishCount = (t.finishCount || 0) + 1; if (!t.firstFinishTime) t.firstFinishTime = now(); t.optDate = now();
+    M.saveRole(); LOG('task force-finished', taskID, 'rewards', JSON.stringify(got));
+    const names = { 1: '属性', 2: '物品', 3: '宠物', 4: '装备', 5: '技能' };
+    return '已完成「' + taskName(taskID) + '」，奖励：' + (got.map(g => (names[g.type] || '其他') + ' ' + g.item + '×' + g.cnt).join('，') || '无') + (r.level > lv0 ? '（升级了）' : '');
+  };
+
   // ---- battle conditions (res/task/xml2/<task>.xml <Step><Condition><Battle ID=beast group Count/>)
   // The client checks a step with task.buffer monsterID == ID and monsterCount >= Count; the server fills those
   // in through the task list of 1319 BATTLE_OVER_NOTICE after a won battle (BattleResultTaskInfo).
