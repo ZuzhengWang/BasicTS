@@ -74,6 +74,9 @@
       atk: r.attackPower, def: r.defensePower, matk: r.mgaicAttackPower || 0, mdef: r.magicDefensePower, speed: r.speed,
       hit: r.hit_rate, dodge: r.avoid_rate, crit: r.bisha, side: 0, isRole: true, petState: PS.NOT_A_PET,
       skills: (r.skills || []).map(k => ({ id: k.id, lv: k.lv || 1 })),
+      // weapon type (item_equip Weapon: 0 none, 1 sword/axe, 2 bow, 3 staff, 4 dart, 5 spear, 6 gloves) and shield, for skill requirements
+      weaponType: (r.dressed || []).reduce((w, e) => { const c = D.equips[e.goodID] || {}; return Number(c.EquipPart) === 5 ? Number(c.Weapon || 0) : w; }, 0),
+      hasShield: (r.dressed || []).some(e => Number((D.equips[e.goodID] || {}).EquipPart) === 6),
     };
   }
   function petAvatar(r, p, state, pos) {
@@ -263,8 +266,9 @@
     if (actionID === ACT.AUTO) {
       const a = b.players.find(x => x.petID === petID);
       const p = a && a.pet;
+      // a pet with an auto-battle skill chosen in the pet bag keeps using it; everyone else lets the AI pick each round
       cmd = p && p.skillID_autoBattle ? { actionID: p.skillID_autoBattle, level: p.skillLevel_autoBattle || 1, side: 1, pos: -1 }
-        : { actionID: petID ? ACT.PET_ATTACK : ACT.ATTACK, side: 1, pos: -1 };
+        : { auto: true, actionID: petID ? ACT.PET_ATTACK : ACT.ATTACK, side: 1, pos: -1 };
     }
     LOG('round cmd', petID ? 'pet ' + petID : 'role', actionID, 'side', side, 'pos', pos, 'lv', level);
     b.cmds[petID] = cmd;
@@ -420,14 +424,52 @@
     r.dmg = hurt(tgt, r.dmg);
     return [{ atkType: a.isRole ? ACT.ATTACK : ACT.PET_ATTACK, target: tgt, change_hp: -r.dmg, state2: hitBits(r, tgt, defending) }];
   }
+  // ---------------------------------------------------------------- auto battle AI (APPROX, the original is server side)
+  // Used for the role and pets in auto battle (1308 AUTO without an auto-battle skill set) and for assist pets.
+  // A skill is usable when the avatar has the MP and, for the role, the weapon/shield the action asks for
+  // (BattleActionListConfig Weapon/Shield). Choice: revive a fallen ally > heal an ally under 40% HP (80%) >
+  // status magic on a foe that does not have that status yet (20%) > a random attack skill (65%) > normal attack.
+  function usableSkill(a, s) {
+    const act = D.actions[s.id]; const sk = skillOf(s.id, s.lv || 1);
+    if (!act || !sk || act.Property === '1' || a.mp < sk.mp) return null;
+    if (a.isRole) {
+      const w = Number(act.Weapon); if (!isNaN(w) && w !== -1 && w !== (a.weaponType || 0)) return null;
+      const sh = Number(act.Shield || 0); if ((sh === 1 && !a.hasShield) || (sh === 2 && a.hasShield)) return null;
+    }
+    return sk;
+  }
+  function autoCmd(a, foes, friends) {
+    const foeSide = a.side === 0 ? 1 : 0;
+    const dflt = { actionID: a.isRole ? ACT.ATTACK : ACT.PET_ATTACK, side: foeSide, pos: -1 };
+    const sks = (a.skills || []).map(s => usableSkill(a, s)).filter(Boolean);
+    if (!sks.length) return dflt;
+    const mk = (sk, t) => ({ actionID: sk.id, level: sk.lv, side: t ? t.side : foeSide, pos: t ? t.posIdx : -1 });
+    const down = friends.filter(f => f.hp <= 0 && !f.knockedOff && !f.captured);
+    const rev = sks.find(k => k.revive); if (rev && down.length) return mk(rev, down[0]);
+    const weak = alive(friends).filter(f => f.hp < f.hp_max * 0.4).sort((x, y) => x.hp / x.hp_max - y.hp / y.hp_max)[0];
+    const heal = sks.filter(k => k.type === 4 && !k.revive);
+    if (weak && heal.length && Math.random() < 0.8) return mk(pick(heal), weak);
+    const st = sks.filter(k => k.type === 8 && k.status && alive(foes).some(f => !has(f, k.status)));
+    const atk = sks.filter(k => [1, 6, 7, 15].includes(k.type) && !k.revive);
+    const r = Math.random();
+    if (st.length && r < 0.2) { const k = pick(st); return mk(k, pick(alive(foes).filter(f => !has(f, k.status)))); }
+    if (atk.length && r < 0.85) return mk(pick(atk), null);
+    return dflt;
+  }
+
   // monster AI: SpecSkill by weight (APPROX 35% of turns), otherwise a normal attack on a random player
   function monsterCmd(m) {
-    if (m.spec.length && Math.random() < 0.35) {
-      const tot = m.spec.reduce((x, y) => x + y.w, 0); let k = Math.random() * tot;
-      const s = m.spec.find(x => (k -= x.w) < 0) || m.spec[0];
-      const act = D.actions[s.id];
-      // only skills with knock-down (3) and knock-off (5) phases: a kill by a skill without them shows no fall
-      if (act && (!act.User || act.User === '1' || act.User === '2') && (act.Type === '2' || act.Type === '8' || (act.phases.includes(3) && act.phases.includes(5))) && skillOf(s.id, 1)) return { actionID: s.id, level: Math.max(1, Math.min(10, Math.ceil(m.level / 10))), side: 0, pos: -1 };
+    // SpecSkill by weight on 60% of turns (APPROX). A kill by a skill without knock-down/knock-off phases is turned
+    // into a normal attack by markKills, so every usable skill is allowed here.
+    if (m.spec.length && Math.random() < 0.6) {
+      const ok = m.spec.filter(x => { const act = D.actions[x.id]; return act && (!act.User || act.User === '1' || act.User === '2') && act.Property !== '1' && ![3, 5, 9, 17].includes(+act.Type) && skillOf(x.id, 1); });
+      if (ok.length) {
+        const tot = ok.reduce((x, y) => x + y.w, 0); let k = Math.random() * tot;
+        const sp = ok.find(x => (k -= x.w) < 0) || ok[0];
+        const t = +D.actions[sp.id].Type;
+        if (t !== 4 || alive(m.side === 1 ? [m] : []).some(f => f.hp < f.hp_max * 0.6))
+          return { actionID: sp.id, level: Math.max(1, Math.min(10, Math.ceil(m.level / 10))), side: 0, pos: -1 };
+      }
     }
     return { actionID: ACT.PET_ATTACK, side: 0, pos: -1 };
   }
@@ -493,7 +535,8 @@
       }
       if (a.side === 0) {
         if (a.petState === PS.AIDE_PET && b.aidesAway) continue;
-        let cmd = a.petState === PS.AIDE_PET ? { actionID: ACT.PET_ATTACK, side: 1, pos: -1 } : cmds[a.petID];
+        let cmd = a.petState === PS.AIDE_PET ? autoCmd(a, b.monsters, b.players) : cmds[a.petID];
+        if (cmd && cmd.auto) cmd = autoCmd(a, b.monsters, b.players);
         if (a.isPet && a.petState === PS.IN_BATTLE && !cmd) continue;      // newly called pet waits a round
         cmd = cmd || { actionID: a.isPet ? ACT.PET_ATTACK : ACT.ATTACK, pos: -1 };
         if (cmd.done) continue;
