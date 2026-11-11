@@ -30,6 +30,7 @@
     const mapID = rd.u32(), mapType = rd.u32(), x = rd.u32(), y = rd.u32(), jump = rd.u32();
     const r = M.ensureRole(c.role());
     r.mapID = mapID; r.mapType = mapType; r.posX = x; r.posY = y;
+    if (M.registerTrans) M.registerTrans(r, mapID);
     c.conn.state.mapID = mapID;
     M.saveRole();
     LOG('enter map', mapID, (D.maps[mapID] || {}).Name || '', x, y);
@@ -95,5 +96,28 @@
     const r = c.role(); r.bossInfo = r.bossInfo || {};
     if (rd.left >= 4) { const id = rd.u32(); const step = rd.left >= 2 ? rd.u16() : 0; r.bossInfo[id] = Object.assign(r.bossInfo[id] || {}, { step }); M.saveRole(); }
     c.reply(new M.ByteWriter());
+  });
+
+  // ---- 修炼之域 (竞技之塔, PracticePanelModule). The tower panel asks which entry floors are open:
+  // 1811 MAP_GET_TRANS_LIST -> count, map IDs (the first one, 21601, is always open in the client).
+  // A floor's crystal NPC registers it with 1810 MAP_REGISTER_TRANS(mapID) -> 1 if it was registered before.
+  // Entry maps are 21601, 21606, 21611 ... (every 5th floor, PracticeAreaConfig embedded in ClientCoreDLL).
+  // APPROX: reaching an entry map also registers it, in case the crystal NPC of that map is not clicked.
+  const transOf = (r) => (r.transList = r.transList || []);
+  const isEntry = (id) => id >= 21601 && id <= 21700 && (id - 21601) % 5 === 0;
+  M.registerTrans = function (r, mapID) { const t = transOf(r); if (isEntry(mapID) && !t.includes(mapID)) { t.push(mapID); return true; } return false; };
+  on(1811, (c) => { const t = transOf(M.ensureRole(c.role())); const w = new M.ByteWriter().u32(t.length); t.forEach(id => w.u32(id)); c.reply(w); });
+  on(1810, (c, rd) => {
+    const id = rd.left >= 4 ? rd.u32() : 0; const r = M.ensureRole(c.role()); const t = transOf(r);
+    const had = t.includes(id); if (!had && id) { t.push(id); M.saveRole(); }
+    LOG('trans registered', id, had ? '(already)' : ''); c.reply(new M.ByteWriter().u32(had ? 1 : 0));
+  });
+  // 1349 JUST_KILL_PRACTICEAREA_BOSS -> count, (userID, killedBossID): the floor NPC (action x6) asks whether this
+  // floor's guard was just beaten. Guard of map 21601+i is beast group 3011+i (PracticeAreaManager.setup).
+  // The battle engine stores the last beaten guard in r.practiceKill (M.onPracticeWin).
+  M.onPracticeWin = function (r, groupID) { if (groupID >= 3011 && groupID <= 3100) r.practiceKill = groupID; };
+  on(1349, (c) => {
+    const r = M.ensureRole(c.role()); const boss = 3011 + ((r.mapID || 0) - 21601);
+    c.reply(new M.ByteWriter().u32(1).u32(c.uid).u32(r.practiceKill === boss ? boss : 0));
   });
 })(window);

@@ -55,7 +55,9 @@
   window.RufflePlayer = window.RufflePlayer || {};
   window.RufflePlayer.config = {
     autoplay: 'on', unmuteOverlay: 'hidden', splashScreen: false, letterbox: 'on',
-    logLevel: window.MOLE_DEBUG ? 'info' : 'warn',
+    // 'info' prints every trace() of the game (several per frame in battle) through console.log and the phone's
+    // log bridge; only wanted for tests (?trace=1)
+    logLevel: /trace=1/.test(location.search) ? 'info' : 'warn',
     allowNetworking: 'all', allowScriptAccess: true, warnOnUnsupportedContent: false,
     contextMenu: 'off', showSwfDownload: false, openUrlMode: 'deny',
     deviceFontRenderer: 'canvas',

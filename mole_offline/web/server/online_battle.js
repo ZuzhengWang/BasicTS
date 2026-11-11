@@ -617,6 +617,7 @@
     // 1319 BattleOverNoticeProtocol
     // task battle conditions (beast group won) for tasks in progress
     const tinfo = result === RESULT.WIN && M.taskBattleWin ? M.taskBattleWin(r, (b.info || {}).groupID) : [];
+    if (result === RESULT.WIN && (b.info || {}).groupID && M.onPracticeWin) M.onPracticeWin(r, b.info.groupID);
     if (result === RESULT.WIN && (b.info || {}).groupID) { const g = b.info.groupID; r.bossInfo = r.bossInfo || {}; r.bossInfo[g] = r.bossInfo[g] || {}; r.bossInfo[g].count = (r.bossInfo[g].count || 0) + 1; }
     if (M.onBattleEnd) setTimeout(() => M.onBattleEnd(), 3000);
     if (tinfo.length) M.saveRole();

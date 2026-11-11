@@ -31,19 +31,28 @@ def nop(path_in, label, a, b):
     print('patched', rel, label.split('::')[-1], 'bytes', a, '-', b)
 
 
-# 1. FighterBody: no pre-drawn poses for the role (all four _bmpFrameList.push statements)
-L1 = 'com.mole2.module.battle.body::FighterBody/<init>'
-ins = ins_of(src, L1)
-starts = [at for at, nm, a in ins if nm == 'findpropstrict' and a.endswith('_bmpFrameList')]
-end = [at for at, nm, a in ins if nm == 'findproperty' and a.endswith('_bmpActionMap')][0]
-nop(src, L1, starts[0], end)
-# 2. BattleAvatarManager.addAvatar: the role's READY event now fires inside its constructor, before the
-#    listener exists, so do not put the role into _prepareBmpActionAvatarList (battle loading would wait forever)
-L2 = 'com.mole2.module.battle.manager.avatar::BattleAvatarManager/static addAvatar'
-ins = ins_of(dst, L2)
-i = [k for k, x in enumerate(ins) if x[1] == 'findpropstrict' and x[2].endswith('_prepareBmpActionAvatarList')][0]
-j = next(k for k in range(i, len(ins)) if ins[k][1] == 'pop')
-nop(dst, L2, ins[i][0], ins[j + 1][0])
+# 1+2 (default on; MOLE_LIVE_IDLE=0 keeps the original pre-drawn idle bitmaps). The role's idle poses stay live
+# MovieClips. Tried going back to the bitmaps in v0.6.1 because live poses cost more CPU in battle (frame construction
+# about 5 s vs 1.6 s per 20 s in a profile), but with the bitmaps some outfit parts were again drawn in a corner
+# during actions (screenshots bi_08/bi_09), even with patch 7. Not solved; kept live.
+import shutil as _sh
+os.makedirs(os.path.dirname(dst), exist_ok=True); _sh.copy(src, dst)
+if os.environ.get('MOLE_LIVE_IDLE', '1') != '0':
+    # 1. FighterBody: no pre-drawn poses for the role (all four _bmpFrameList.push statements)
+    L1 = 'com.mole2.module.battle.body::FighterBody/<init>'
+    ins = ins_of(src, L1)
+    starts = [at for at, nm, a in ins if nm == 'findpropstrict' and a.endswith('_bmpFrameList')]
+    end = [at for at, nm, a in ins if nm == 'findproperty' and a.endswith('_bmpActionMap')][0]
+    nop(src, L1, starts[0], end)
+    # 2. BattleAvatarManager.addAvatar: the role's READY event now fires inside its constructor, before the
+    #    listener exists, so do not put the role into _prepareBmpActionAvatarList (battle loading would wait forever)
+    L2 = 'com.mole2.module.battle.manager.avatar::BattleAvatarManager/static addAvatar'
+    ins = ins_of(dst, L2)
+    i = [k for k, x in enumerate(ins) if x[1] == 'findpropstrict' and x[2].endswith('_prepareBmpActionAvatarList')][0]
+    j = next(k for k in range(i, len(ins)) if ins[k][1] == 'pop')
+    nop(dst, L2, ins[i][0], ins[j + 1][0])
+
+
 
 
 # 3. NewDLL ItemTipsController.onMouseDown: touch screens have no hover, so item tooltips never opened on the phone,
