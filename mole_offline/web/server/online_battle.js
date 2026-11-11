@@ -712,6 +712,8 @@
       // APPROX: some task groups list only high-level entries (group 19 of the 3rd main task: 迷唇爱丝 Lv16+);
       // the original level rule is unknown, so a group monster is at most 2 levels above the role
       lv = Math.min(lv, Math.max(1, (roleLevel || 1) + 2));
+      // 修炼之域 guards (groups 3011-3100): always level 100, by request (the panel text also says 怪物等级 100 for most floors)
+      if (groupID >= 3011 && groupID <= 3100) lv = 100;
       const slots = String(t.Position || '-1').split(/\s+/).map(Number);
       slots.forEach(pos => list.push({ typeID, level: lv, pos: pos >= 0 ? pos : undefined }));
     });

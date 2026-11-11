@@ -163,6 +163,9 @@ for n_, abc_, p_, h_ in abcs_:
 #    The rate is re-measured on every frame, so the skip count also jumps around. Under Ruffle on a phone the rate is
 #    usually below those limits, so skills flashed by with most frames missing. The three constants become 0: every
 #    frame is shown (a slow device plays the battle slower instead of dropping frames). _userAccelerate is untouched.
+#    v0.6.5: with no skipping at all a slow phone played battles in slow motion, so a milder rule is used:
+#    under 22 fps -> 0, under 17 fps -> 1, under 10 fps -> 2 (was 1 / 2 / 3).
+SPILL = {'1': 0, '2': 1, '3': 2}
 L8 = 'com.mole2.core.manager::SystemFrameRateManager/static onStageEnterFrame'
 for dll in ('dll/NewDLL.swf', 'dll/ClientCoreDLL.swf'):
     path = os.path.join(web, dll)
@@ -174,8 +177,8 @@ for dll in ('dll/NewDLL.swf', 'dll/ClientCoreDLL.swf'):
     for k, (at, nm, a) in enumerate(ins[:-1]):
         nx = ins[k + 1]
         if nm == 'pushbyte' and a in ('1', '2', '3') and nx[1] in ('setproperty', 'initproperty') and nx[2].endswith('spillFrames'):
-            edits.append((at, 2, b'\x24\x00'))
+            edits.append((at, 2, b'\x24' + bytes([SPILL[a]])))
     if not edits: print('skip', dll, '(no spillFrames constants; NewDLL overrides this class)'); continue
     assert len(edits) == 3, (dll, len(edits))
     P.patch_swf(path, path, L8, edits)
-    print('patched', dll, 'SystemFrameRateManager (no automatic frame skipping)')
+    print('patched', dll, 'SystemFrameRateManager (milder frame skipping)')

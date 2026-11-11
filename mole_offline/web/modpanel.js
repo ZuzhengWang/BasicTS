@@ -58,6 +58,14 @@
   // keep key presses inside the panel away from the game
   ['keydown', 'keyup', 'keypress', 'pointerdown', 'touchstart', 'wheel'].forEach(ev => box.addEventListener(ev, e => e.stopPropagation()));
 
+  // The game client keeps its own copy of the pets / skills it read at login, so changes made here (new pet, pet
+  // skills, pet stats, role skills) only show in the game's own panels after a reload. They are saved at once.
+  const bar = document.createElement('div');
+  bar.style.cssText = 'display:none;background:#2c6fbb;color:#fff;padding:6px 8px;font-size:14px';
+  bar.innerHTML = '修改已保存。游戏里的人物技能栏要重新载入后才会显示。 <button style="margin-left:8px;padding:4px 10px;border:none;border-radius:6px;background:#fff;color:#2c6fbb;font-weight:bold">现在重新载入</button>';
+  box.insertBefore(bar, main);
+  bar.querySelector('button').onclick = () => { if (M.saveRole) M.saveRole(); location.reload(); };
+  const needReload = () => { bar.style.display = 'block'; };
   const D = () => M.Data;
   const role = () => { const c = M.activeCtx; return c ? M.ensureRole(c.role()) : null; };
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
@@ -107,7 +115,7 @@
         const t = D().petTypes[id]; if (s && !(t.Name || '').includes(s) && id !== s) continue;
         if (++n > 150) break;
         const row = el(`<div class="row"><span class="nm">${esc(t.Name)} <span class="muted">类型 ${id}</span></span><button class="go">添加</button></div>`);
-        row.querySelector('.go').onclick = () => run(`/addpet ${id} ${main.querySelector('#mp-plv').value || 1} ${main.querySelector('#mp-pg').value || 100}`);
+        row.querySelector('.go').onclick = () => { run(`/addpet ${id} ${main.querySelector('#mp-plv').value || 1} ${main.querySelector('#mp-pg').value || 100}`); };
         list.appendChild(row);
       }
     };
@@ -146,6 +154,8 @@
       };
       card.querySelector('.del').onclick = () => { if (confirm('删除 ' + p.nick + '？')) { run('/delpet ' + p.petid); myPetTab2(); } };
       card.querySelector('.addsk').onclick = () => { run(`/addskill ${p.petid} ${card.querySelector('.sk').value} ${card.querySelector('.sklv').value}`); myPetTab2(); };
+      if (p.status === 0) card.appendChild(el('<p class="muted" style="color:#c0392b">这只宠物在精灵仓库里，精灵背包里看不到它。把上面的状态改成“空闲”并保存，就会回到背包（背包最多 11 只）。</p>'));
+      if ((p.skills || []).length > 10) card.appendChild(el('<p class="muted" style="color:#c0392b">技能超过 10 个，精灵背包只显示前 10 个。</p>'));
       const skl = card.querySelector('.skl');
       if (!(p.skills || []).length) skl.appendChild(el('<span class="muted">还没有技能</span>'));
       (p.skills || []).forEach(k => {
@@ -155,9 +165,9 @@
       });
       main.appendChild(card);
     });
-    main.appendChild(el('<p class="muted">宠物状态改成“主战/辅助/待命”后在下一场战斗生效；精灵背包要重新打开才刷新。</p>'));
+    main.appendChild(el('<p class="muted">宠物状态改成“主战/辅助/待命”后在下一场战斗生效；新加的技能显示在精灵背包的“后天技能”一栏，精灵背包要关掉重新打开才刷新。</p>'));
   }
-  const myPetTab2 = () => { const keep = foot.textContent; show('mypet'); foot.textContent = keep; };
+  const myPetTab2 = () => { const keep = foot.textContent; show('mypet'); foot.textContent = keep + '\n关闭修改器后重新打开精灵背包就能看到。'; };
 
   // ---- edit own equipment
   const EQ_F = [['atk', '攻击', 'attack'], ['matk', '魔攻', 'mattact'], ['def', '防御', 'defense'], ['mdef', '魔防', 'mdefense'], ['hp', '生命', 'hpMax'],
@@ -270,7 +280,7 @@
     const sc = el(`<div class="card"><div class="row"><b class="nm">人物技能</b></div>` +
       `<div class="row">学技能 <select class="sk" style="max-width:200px">${skillOpts('role')}</select> 等级 <select class="sklv">${lvOpts(10)}</select><button class="sm addsk">添加/改等级</button></div>` +
       `<div class="row skl"></div><p class="muted">人物技能要对应武器才能用（例如剑技要拿剑）。添加后点“清理内存(重新载入)”，游戏里的技能栏才会刷新；自动战斗会立即使用。</p></div>`);
-    const again = () => { M.saveRole(); const keep = foot.textContent; show('role'); foot.textContent = keep; };
+    const again = () => { M.saveRole(); const keep = foot.textContent; show('role'); foot.textContent = keep; needReload(); };
     sc.querySelector('.addsk').onclick = () => {
       const id = Number(sc.querySelector('.sk').value); const info = M.skillInfo(id); if (!info) return;
       const lv = Math.min(Number(sc.querySelector('.sklv').value), info.lv.length || 1);
