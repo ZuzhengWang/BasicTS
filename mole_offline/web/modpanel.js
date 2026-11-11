@@ -32,7 +32,7 @@
   box.innerHTML = '<header><b>修改器</b></header><main></main><footer>点上面的分类开始。修改会立即保存到本地存档。</footer>';
   document.body.appendChild(box);
   const head = box.querySelector('header'), main = box.querySelector('main'), foot = box.querySelector('footer');
-  const tabs = { item: '物品/装备', pet: '加宠物', mypet: '我的宠物', myequip: '我的装备', role: '角色', task: '任务', gfx: '画面' };
+  const tabs = { item: '物品/装备', pet: '加宠物', mypet: '我的宠物', myequip: '我的装备', role: '角色', skill: '技能', task: '任务', gfx: '画面' };
   let cur = 'item';
   Object.keys(tabs).forEach(k => { const b = document.createElement('button'); b.className = 'tab'; b.textContent = tabs[k]; b.dataset.k = k; b.onclick = () => show(k); head.appendChild(b); });
   const xb = document.createElement('button'); xb.className = 'x'; xb.textContent = '×'; xb.onclick = () => { box.style.display = 'none'; }; head.appendChild(xb);
@@ -67,8 +67,8 @@
   function show(k) {
     cur = k; head.querySelectorAll('.tab').forEach(b => b.classList.toggle('on', b.dataset.k === k));
     main.innerHTML = '';
-    if (!role() && k !== 'item' && k !== 'pet' && k !== 'gfx') { main.innerHTML = '<p>请先登录并进入游戏地图。</p>'; return; }
-    ({ item: itemTab, pet: petTab, mypet: myPetTab, myequip: myEquipTab, role: roleTab, task: taskTab, gfx: gfxTab })[k]();
+    if (!role() && k !== 'item' && k !== 'pet' && k !== 'gfx' && k !== 'skill') { main.innerHTML = '<p>请先登录并进入游戏地图。</p>'; return; }
+    ({ item: itemTab, pet: petTab, mypet: myPetTab, myequip: myEquipTab, role: roleTab, skill: skillTab, task: taskTab, gfx: gfxTab })[k]();
   }
 
   // ---- search & add items / equipment
@@ -122,6 +122,9 @@
     endurance: 'endurance', quick: 'quick', intelligence: 'intelligence', hp: 'hp_max', mp: 'mp_max', atk: 'attack_value', def: 'defense_value',
     speed: 'speed', spirit: 'spirit', resume: 'resume', hit: 'hit_rate', dodge: 'avoid_rate', crit: 'bisha', fightback: 'fight_back' };
   const ST = ['仓库', '空闲', '待命', '主战', '辅助'];
+  const lvOpts = (n) => Array.from({ length: n }, (_, i) => `<option value="${i + 1}">${i + 1}</option>`).join('');
+  const skillOpts = (kind) => M.skillList(kind).map(k => `<option value="${k.id}">${esc(k.name)}（${k.typeName}）</option>`).join('');
+  let _petOpts = null; const petSkillOpts = () => _petOpts || (_petOpts = skillOpts('pet'));
   function myPetTab() {
     const r = role(); const pets = M.petsOf(r);
     if (!pets.length) { main.innerHTML = '<p>还没有宠物。去“加宠物”添加。</p>'; return; }
@@ -130,8 +133,8 @@
       const card = el(`<div class="card"><div class="row"><b class="nm">[${p.petid}] ${esc(p.nick)}</b>` +
         `<select class="stt">${ST.map((n, i) => `<option value="${i}"${p.status === i ? ' selected' : ''}>${n}</option>`).join('')}</select>` +
         `<button class="sm del">删除</button></div><div class="grid"></div>` +
-        `<div class="row"><input class="sk" placeholder="技能ID，例如 5106" style="width:130px"><button class="sm addsk">学技能</button>` +
-        `<span class="muted">${(p.skills || []).map(k => k.id + ' ' + ((M.skillInfo(k.id) || {}).name || '') + ' Lv' + k.lv).join('，')}</span></div>` +
+        `<div class="row">学技能 <select class="sk" style="max-width:200px">${petSkillOpts()}</select> 等级 <select class="sklv">${lvOpts(10)}</select><button class="sm addsk">添加/改等级</button></div>` +
+        `<div class="row skl"></div>` +
         `<div class="row"><button class="go save">保存修改</button></div></div>`);
       const g = card.querySelector('.grid');
       PET_F.forEach(([f, n]) => g.appendChild(el(`<label>${n}<input class="n" data-f="${f}" type="number" value="${p[PET_V[f]] || 0}"></label>`)));
@@ -142,7 +145,14 @@
         foot.textContent = outs.join('\n') || '没有改动'; myPetTab2();
       };
       card.querySelector('.del').onclick = () => { if (confirm('删除 ' + p.nick + '？')) { run('/delpet ' + p.petid); myPetTab2(); } };
-      card.querySelector('.addsk').onclick = () => { run(`/addskill ${p.petid} ${card.querySelector('.sk').value}`); myPetTab2(); };
+      card.querySelector('.addsk').onclick = () => { run(`/addskill ${p.petid} ${card.querySelector('.sk').value} ${card.querySelector('.sklv').value}`); myPetTab2(); };
+      const skl = card.querySelector('.skl');
+      if (!(p.skills || []).length) skl.appendChild(el('<span class="muted">还没有技能</span>'));
+      (p.skills || []).forEach(k => {
+        const b = el(`<button class="sm" style="background:#b9864a">${esc((M.skillInfo(k.id) || {}).name || k.id)} Lv${k.lv} ×</button>`);
+        b.onclick = () => { if (confirm('删除技能 ' + ((M.skillInfo(k.id) || {}).name || k.id) + '？')) { run(`/delskill ${p.petid} ${k.id}`); myPetTab2(); } };
+        skl.appendChild(b);
+      });
       main.appendChild(card);
     });
     main.appendChild(el('<p class="muted">宠物状态改成“主战/辅助/待命”后在下一场战斗生效；精灵背包要重新打开才刷新。</p>'));
@@ -255,5 +265,63 @@
     card.querySelector('.heal').onclick = () => run('/heal');
     card.querySelector('.fight').onclick = () => { run(`/fight ${card.querySelector('.fid').value} ${card.querySelector('.flv').value} ${card.querySelector('.fn').value}`); box.style.display = 'none'; };
     main.appendChild(card);
+    // role skills: choose from a list (person skills). The game's skill panel shows them after a reload.
+    r.skills = r.skills || [];
+    const sc = el(`<div class="card"><div class="row"><b class="nm">人物技能</b></div>` +
+      `<div class="row">学技能 <select class="sk" style="max-width:200px">${skillOpts('role')}</select> 等级 <select class="sklv">${lvOpts(10)}</select><button class="sm addsk">添加/改等级</button></div>` +
+      `<div class="row skl"></div><p class="muted">人物技能要对应武器才能用（例如剑技要拿剑）。添加后点“清理内存(重新载入)”，游戏里的技能栏才会刷新；自动战斗会立即使用。</p></div>`);
+    const again = () => { M.saveRole(); const keep = foot.textContent; show('role'); foot.textContent = keep; };
+    sc.querySelector('.addsk').onclick = () => {
+      const id = Number(sc.querySelector('.sk').value); const info = M.skillInfo(id); if (!info) return;
+      const lv = Math.min(Number(sc.querySelector('.sklv').value), info.lv.length || 1);
+      let k = r.skills.find(x => x.id === id); if (!k) { k = { id, lv: 1, exp: 0 }; r.skills.push(k); } k.lv = lv;
+      foot.textContent = '人物学会 ' + info.name + ' Lv' + lv; again();
+    };
+    const skl = sc.querySelector('.skl');
+    if (!r.skills.length) skl.appendChild(el('<span class="muted">还没有技能</span>'));
+    r.skills.forEach(k => {
+      const b = el(`<button class="sm" style="background:#b9864a">${esc((M.skillInfo(k.id) || {}).name || k.id)} Lv${k.lv || 1} ×</button>`);
+      b.onclick = () => { if (confirm('删除人物技能？')) { r.skills = r.skills.filter(x => x !== k); again(); } };
+      skl.appendChild(b);
+    });
+    main.appendChild(sc);
+  }
+
+  // ---- skill parameters (global: for everyone who uses the skill, at every level). Blank = original value.
+  const SK_F = [['mult', '物理倍率', [1, 15]], ['base', '魔法基础伤害', [6, 7]], ['heal', '回复量', [4]], ['mp', '耗蓝', null],
+    ['statusChance', '状态概率%', 'status'], ['statusRounds', '状态回合', 'status']];
+  function skillTab() {
+    const top = el(`<div class="row"><input class="q" placeholder="技能名或ID" style="width:150px"> <select class="kind"><option value="all">全部</option><option value="role">人物</option><option value="pet">宠物/怪物</option></select>` +
+      `<label><input type="checkbox" class="only"> 只看改过的</label><button class="sm go2">搜索</button></div>`);
+    const list = el('<div></div>');
+    main.appendChild(el('<p class="muted">修改对所有使用这个技能的人物、宠物、怪物生效，所有等级都用你填的数值；留空 = 用原版数值。游戏里的技能说明文字不会变。</p>'));
+    main.appendChild(top); main.appendChild(list);
+    const draw = () => {
+      list.innerHTML = ''; const q = top.querySelector('.q').value.trim(); const mods = M.skillMods(); const only = top.querySelector('.only').checked;
+      const rows = M.skillList(top.querySelector('.kind').value).filter(k => (!q || k.name.includes(q) || String(k.id) === q) && (!only || mods[k.id]));
+      if (!rows.length) list.appendChild(el('<p class="muted">没有找到。</p>'));
+      rows.slice(0, 40).forEach(k => {
+        const a = M.skillOf(k.id, 1, true), z = M.skillOf(k.id, k.maxLv, true); if (!a) return;
+        const m = mods[k.id] || {};
+        const dmg = [1, 6, 7, 15].includes(k.type);
+        const fs = SK_F.filter(([f, n, t]) => t === null || (t === 'status' ? (!!a.status || dmg) : t.includes(k.type)));
+        const card = el(`<div class="card"><div class="row"><b class="nm">${esc(k.name)} <span class="muted">${k.id} · ${k.user ? '宠物/怪物' : '人物'} · ${k.typeName} · 共${k.maxLv}级${mods[k.id] ? ' · 已修改' : ''}</span></b>` +
+          `<button class="go save">保存</button><button class="sm reset">恢复原版</button></div><div class="grid"></div><div class="muted">${esc(a.desc || '')}</div></div>`);
+        const g = card.querySelector('.grid');
+        if (dmg || a.status) g.appendChild(el(`<label>附加状态<select data-s="1">${[['', a.status ? '原版' : '无'], ['poison', '中毒'], ['sleep', '昏睡'], ['stone', '石化'], ['curse', '诅咒'], ['confusion', '混乱'], ['forget', '遗忘']].map(([v, t]) => `<option value="${v}"${(m.status || '') === v ? ' selected' : ''}>${t}</option>`).join('')}</select></label>`));
+        fs.forEach(([f, n]) => g.appendChild(el(`<label>${n}<input class="n" data-f="${f}" type="number" step="0.1" value="${m[f] !== undefined ? m[f] : ''}" placeholder="${a[f]}${z && z[f] !== a[f] ? '~' + z[f] : ''}"></label>`)));
+        card.querySelector('.save').onclick = () => {
+          const mod = {}; const ss = card.querySelector('select[data-s]'); if (ss && ss.value) mod.status = ss.value;
+          card.querySelectorAll('input[data-f]').forEach(i => { if (i.value !== '' && !isNaN(Number(i.value))) mod[i.dataset.f] = Number(i.value); });
+          M.setSkillMod(k.id, mod); foot.textContent = k.name + (Object.keys(mod).length ? ' 已保存：' + JSON.stringify(mod) : ' 已恢复原版') + '（下一次使用时生效）'; draw();
+        };
+        card.querySelector('.reset').onclick = () => { M.setSkillMod(k.id, null); foot.textContent = k.name + ' 已恢复原版'; draw(); };
+        list.appendChild(card);
+      });
+      if (rows.length > 40) list.appendChild(el('<p class="muted">只显示前 40 个，共 ' + rows.length + ' 个，请用搜索缩小范围。</p>'));
+    };
+    top.querySelector('.go2').onclick = draw; top.querySelector('.kind').onchange = draw; top.querySelector('.only').onchange = draw;
+    top.querySelector('.q').onkeydown = (e) => { if (e.key === 'Enter') draw(); };
+    draw();
   }
 })();

@@ -339,7 +339,7 @@
   // ---------------------------------------------------------------- skills
   // Skill effects follow BattleActionListConfig.xml Type/TargetAmount and the numbers written in Skill.xml
   // level descriptions ("1.3倍物理攻击", "基础伤害123"). APPROX: the exact formulas are server side.
-  function skillOf(id, lv) {
+  function skillOf(id, lv, raw) {
     const act = D.actions[id]; const info = M.skillInfo(id);
     if (!act || !info || id === ACT.PET_ATTACK || id === ACT.ATTACK) return null;
     const L = info.lv.find(x => x.lv === lv) || info.lv[info.lv.length - 1];
@@ -349,14 +349,20 @@
     const nm = info.name || '';
     const st = /抵抗/.test(nm) ? null : STATUS.find(x => x.re.test(nm));
     const chance = desc.match(/有(\d+)%概率/), rounds = desc.match(/(\d+)回合/);
-    return {
+    const sk = {
       status: st ? st.k : null, statusChance: chance ? Number(chance[1]) : Math.min(90, 40 + 8 * lv), statusRounds: rounds ? Number(rounds[1]) : 2,
       id, lv, desc, type: +act.Type || 1, amount: +act.TargetAmount || 0, target: +act.ApplyTarget || 2,
       mp: info.mpA + info.mpB * Math.max(0, lv - 1),
       revive: /复活/.test(desc + ((M.skillInfo(id) || {}).name || '')), revivePct: (desc.match(/(\d+)%/) ? Number(desc.match(/(\d+)%/)[1]) / 100 : 0.3),
       mult: mult ? Number(mult[1]) : pct ? 1 + Number(pct[1]) / 100 : 1 + 0.1 * lv, base: base ? Number(base[1]) : 40 + 20 * lv, heal: heal ? Number(heal[1]) : 60 + 40 * lv,
     };
+    // 修改器「技能」页: per-skill overrides stored in the save (all levels, everyone who uses the skill)
+    const o = !raw && ((M.Store.load().skillMods || {})[id]);
+    if (o && o.status && STATUS.some(x => x.k === o.status)) sk.status = o.status;   // extra status effect chosen in the modifier
+    if (o) ['mult', 'base', 'heal', 'mp', 'statusChance', 'statusRounds'].forEach(k => { if (o[k] !== undefined && o[k] !== null && o[k] !== '' && !isNaN(o[k])) sk[k] = Number(o[k]); });
+    return sk;
   }
+  M.skillOf = skillOf;
   function magicDamage(att, tgt, sk) {
     if (Math.random() * 100 > Math.max(40, att.hit - tgt.dodge / 2)) return { miss: true, dmg: 0 };
     const d = (sk.base + att.matk * 0.4 - tgt.mdef * 0.3) * rand(0.9, 1.1);
@@ -424,11 +430,27 @@
     r.dmg = hurt(tgt, r.dmg);
     return [{ atkType: a.isRole ? ACT.ATTACK : ACT.PET_ATTACK, target: tgt, change_hp: -r.dmg, state2: hitBits(r, tgt, defending) }];
   }
+  // ---- skill catalogue for the modifier (修改器): every Skill.xml skill that has a battle action.
+  // kind 'pet': usable by pets (BattleActionListConfig User 1 or 3), 'role': person skills (User empty), else all.
+  const TYPE_NAME = { 1: '物理攻击', 2: 'MP攻击', 3: '防御', 4: '回复', 5: '状态防御', 6: '吸血魔法', 7: '魔法攻击', 8: '异常状态', 9: '防御状态', 15: '吸血攻击', 17: '护卫' };
+  M.skillList = function (kind) {
+    if (!D.skillDoc) return [];
+    D._skillList = D._skillList || Array.from(D.skillDoc.getElementsByTagName('Skill')).map(e => {
+      const id = Number(e.getAttribute('ID')); const act = D.actions[id]; const info = M.skillInfo(id);
+      if (!act || !info || act.Property === '1') return null;
+      return { id, name: info.name || String(id), type: +act.Type || 0, typeName: TYPE_NAME[+act.Type] || ('类型' + act.Type), user: act.User || '', maxLv: info.lv.length || 1 };
+    }).filter(Boolean).sort((a, b) => a.id - b.id);
+    return D._skillList.filter(k => kind === 'pet' ? (k.user === '1' || k.user === '3') : kind === 'role' ? !k.user : true);
+  };
+  M.skillMods = () => { const d = M.Store.load(); d.skillMods = d.skillMods || {}; return d.skillMods; };
+  M.setSkillMod = function (id, mod) { const m = M.skillMods(); if (mod && Object.keys(mod).length) m[id] = mod; else delete m[id]; M.Store.save(); };
+
   // ---------------------------------------------------------------- auto battle AI (APPROX, the original is server side)
   // Used for the role and pets in auto battle (1308 AUTO without an auto-battle skill set) and for assist pets.
   // A skill is usable when the avatar has the MP and, for the role, the weapon/shield the action asks for
-  // (BattleActionListConfig Weapon/Shield). Choice: revive a fallen ally > heal an ally under 40% HP (80%) >
-  // status magic on a foe that does not have that status yet (20%) > a random attack skill (65%) > normal attack.
+  // (BattleActionListConfig Weapon/Shield). Choice: revive a fallen ally > heal an ally under 40% HP > status magic on a foe
+  // that does not have that status yet (20%, or always when it is the only kind left) > a random attack skill >
+  // normal attack only when no skill is usable.
   function usableSkill(a, s) {
     const act = D.actions[s.id]; const sk = skillOf(s.id, s.lv || 1);
     if (!act || !sk || act.Property === '1' || a.mp < sk.mp) return null;
@@ -448,20 +470,20 @@
     const rev = sks.find(k => k.revive); if (rev && down.length) return mk(rev, down[0]);
     const weak = alive(friends).filter(f => f.hp < f.hp_max * 0.4).sort((x, y) => x.hp / x.hp_max - y.hp / y.hp_max)[0];
     const heal = sks.filter(k => k.type === 4 && !k.revive);
-    if (weak && heal.length && Math.random() < 0.8) return mk(pick(heal), weak);
+    if (weak && heal.length) return mk(pick(heal), weak);
     const st = sks.filter(k => k.type === 8 && k.status && alive(foes).some(f => !has(f, k.status)));
     const atk = sks.filter(k => [1, 6, 7, 15].includes(k.type) && !k.revive);
-    const r = Math.random();
-    if (st.length && r < 0.2) { const k = pick(st); return mk(k, pick(alive(foes).filter(f => !has(f, k.status)))); }
-    if (atk.length && r < 0.85) return mk(pick(atk), null);
+    const useSt = () => { const k = pick(st); return mk(k, pick(alive(foes).filter(f => !has(f, k.status)))); };
+    if (st.length && (!atk.length || Math.random() < 0.2)) return useSt();
+    if (atk.length) return mk(pick(atk), null);        // a usable skill is always preferred to the normal attack
     return dflt;
   }
 
   // monster AI: SpecSkill by weight (APPROX 35% of turns), otherwise a normal attack on a random player
   function monsterCmd(m) {
-    // SpecSkill by weight on 60% of turns (APPROX). A kill by a skill without knock-down/knock-off phases is turned
+    // SpecSkill by weight whenever one is usable (APPROX). A kill by a skill without knock-down/knock-off phases is turned
     // into a normal attack by markKills, so every usable skill is allowed here.
-    if (m.spec.length && Math.random() < 0.6) {
+    if (m.spec.length) {
       const ok = m.spec.filter(x => { const act = D.actions[x.id]; return act && (!act.User || act.User === '1' || act.User === '2') && act.Property !== '1' && ![3, 5, 9, 17].includes(+act.Type) && skillOf(x.id, 1); });
       if (ok.length) {
         const tot = ok.reduce((x, y) => x + y.w, 0); let k = Math.random() * tot;

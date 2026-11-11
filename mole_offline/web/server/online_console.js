@@ -169,7 +169,7 @@
       if (!p || !M.skillInfo(id)) return say(c, '用法: /addskill 宠物编号 技能ID [等级]（技能ID见 Skill.xml，例如 5106 狂击、7003 流火术）');
       M.initPetSkills(p); let k = p.skills.find(x => x.id === id);
       if (!k) { k = { id, lv: 1, exp: 0 }; p.skills.push(k); }
-      if (lv) k.fixedLv = lv; M.syncPetSkills(p);
+      if (lv) k.fixedLv = Math.min(lv, (M.skillInfo(id).lv || []).length || 1); M.syncPetSkills(p);
       say(c, `[${p.petid}] ${p.nick} 学会 ${M.skillInfo(id).name} Lv${k.lv}（重新打开精灵背包查看）`);
     },
     delskill: (c, a, r) => {
