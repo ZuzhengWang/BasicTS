@@ -103,7 +103,9 @@
       earth: +t.Earth || 0, water: +t.Water || 0, fire: +t.Fire || 0, wind: +t.Wind || 0, clothes: [],
       atk: Math.round(tmp.attackPower * 0.8), def: Math.round(tmp.defensePower * 0.8), matk: tmp.mgaicAttackPower, mdef: tmp.magicDefensePower,
       speed: Math.round(tmp.speed), hit: 90, dodge: 5, crit: 3, side: 1, isRole: false, style: +t.Style || 1,
-      petState: PS.NOT_A_PET, skills: [], catchRate: catchRate(t, level), specCatch: String(t.SpecCatch || '').split(/\s+/).map(Number),
+      // the client preloads the effect resources of the skills in an avatar's skill list (BattleResLoadManager);
+      // before v0.6.7 monsters sent an empty list, so their special skills played without any animation
+      petState: PS.NOT_A_PET, skills: specSkills(t).filter(x => D.actions[x.id] && M.skillInfo(x.id)).map(x => ({ id: x.id, lv: Math.max(1, Math.min(10, Math.ceil(level / 10))) })), catchRate: catchRate(t, level), specCatch: String(t.SpecCatch || '').split(/\s+/).map(Number),
       spec: specSkills(t),
     };
   }
@@ -595,8 +597,18 @@
       }
       if (!alive(b.monsters).length || !alive(b.players).length) break;
     }
-    const w = new ByteWriter().u32(acts.length);
-    acts.forEach((x, i) => writeAction(w, i + 1, x.actor, x.loops, x.mp));
+    // Client playback (BattleActionManager.generateNextAction): action infos with the same seq play together, the
+    // loops inside one info play one after another. So a skill that hits several different targets at once is sent
+    // as one info per target with the same seq (before v0.6.7 it was one info with N loops: N separate animations).
+    const infos = [];
+    acts.forEach((x, i) => {
+      const tg = x.loops.map(l => l.target.userID + '_' + l.target.petID);
+      const multi = x.loops.length > 1 && new Set(tg).size === tg.length;
+      if (multi) x.loops.forEach((l, k) => infos.push({ seq: i + 1, actor: x.actor, loops: [l], mp: k === 0 ? x.mp : 0 }));
+      else infos.push({ seq: i + 1, actor: x.actor, loops: x.loops, mp: x.mp });
+    });
+    const w = new ByteWriter().u32(infos.length);
+    infos.forEach(x => writeAction(w, x.seq, x.actor, x.loops, x.mp));
     c.push(1310, w);
     c.push(1311, writeSync(b));
     LOG('round', b.round, 'hp', b.players.concat(b.monsters).map(a => a.nick + ':' + a.hp + '/' + a.hp_max).join(' '));
