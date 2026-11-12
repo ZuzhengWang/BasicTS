@@ -48,6 +48,9 @@ const { chromium } = require('playwright');
     const re = new RegExp(process.env.SLOW_RE), ms = +(process.env.SLOW_MS || 3000);
     await pg.route(u => re.test(u.toString()), async r => { await new Promise(z => setTimeout(z, ms * (0.5 + Math.random()))); r.continue(); });
   }
+  if (process.env.INIT_LS) {   // "key=value;key2=value2" written to localStorage before the page scripts run
+    await pg.addInitScript((kv) => { kv.split(';').forEach(x => { const i = x.indexOf('='); try { localStorage.setItem(x.slice(0, i), x.slice(i + 1)); } catch (e) { } }); }, process.env.INIT_LS);
+  }
   if (process.env.FAKE_NATIVE) {
     await pg.addInitScript(() => {
       let store = null;

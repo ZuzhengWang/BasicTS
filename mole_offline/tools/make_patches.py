@@ -167,18 +167,21 @@ for n_, abc_, p_, h_ in abcs_:
 #    under 22 fps -> 0, under 17 fps -> 1, under 10 fps -> 2 (was 1 / 2 / 3).
 SPILL = {'1': 0, '2': 1, '3': 2}
 L8 = 'com.mole2.core.manager::SystemFrameRateManager/static onStageEnterFrame'
-for dll in ('dll/NewDLL.swf', 'dll/ClientCoreDLL.swf'):
-    path = os.path.join(web, dll)
-    try:
-        ins = ins_of(path, L8)
-    except KeyError:
-        continue
+# v0.6.8: three variants of NewDLL.swf are shipped; the page serves the one chosen in the modifier's 画面 tab
+# (web/server/core.js route, localStorage mole_skip): default = milder rule above, .skip0 = never skip,
+# .skip3 = the original 1 / 2 / 3.
+def spill_variant(path_in, path_out, table):
+    ins = ins_of(path_in, L8)
     edits = []
     for k, (at, nm, a) in enumerate(ins[:-1]):
         nx = ins[k + 1]
         if nm == 'pushbyte' and a in ('1', '2', '3') and nx[1] in ('setproperty', 'initproperty') and nx[2].endswith('spillFrames'):
-            edits.append((at, 2, b'\x24' + bytes([SPILL[a]])))
-    if not edits: print('skip', dll, '(no spillFrames constants; NewDLL overrides this class)'); continue
-    assert len(edits) == 3, (dll, len(edits))
-    P.patch_swf(path, path, L8, edits)
-    print('patched', dll, 'SystemFrameRateManager (milder frame skipping)')
+            edits.append((at, 2, b'\x24' + bytes([table[a]])))
+    assert len(edits) == 3, (path_in, len(edits))
+    if path_out != path_in: _sh.copy(path_in, path_out)
+    P.patch_swf(path_out, path_out, L8, edits)
+_nd = os.path.join(web, 'dll/NewDLL.swf')
+spill_variant(_nd, os.path.join(web, 'dll/NewDLL.skip0.swf'), {'1': 0, '2': 0, '3': 0})
+_sh.copy(_nd, os.path.join(web, 'dll/NewDLL.skip3.swf'))
+spill_variant(_nd, _nd, SPILL)
+print('patched dll/NewDLL.swf SystemFrameRateManager (milder frame skipping) + variants .skip0 / .skip3')

@@ -242,6 +242,18 @@
       b.onclick = () => { try { localStorage.setItem('mole_dpr', v); } catch (e) { } if (M.saveRole) M.saveRole(); location.reload(); };
       main.appendChild(b);
     });
+    const pickRow = (title, key, opts, dflt) => {
+      let cur = dflt; try { const v = localStorage.getItem(key); if (v !== null) cur = v; } catch (e) { }
+      main.appendChild(el('<p>' + title + '</p>'));
+      opts.forEach(([v, t]) => {
+        const b = el('<button class="tab" style="margin:4px">' + (v === cur ? '✔ ' : '') + esc(t) + '</button>');
+        b.onclick = () => { try { if (v === dflt) localStorage.removeItem(key); else localStorage.setItem(key, v); } catch (e) { } if (M.saveRole) M.saveRole(); location.reload(); };
+        main.appendChild(b);
+      });
+    };
+    pickRow('战斗动画跳帧（手机帧率低时跳过动画帧来保持速度；动画一闪而过或完全看不到就选“不跳帧”，太慢就选“原版”）：', 'mole_skip',
+      [['', '折中（默认）'], ['skip0', '不跳帧（动画完整，慢）'], ['skip3', '原版（最快，动画可能看不清）']], '');
+    pickRow('群体技能：', 'mole_aoe', [['', '同时命中全体（默认）'], ['off', '逐个目标播放（旧方式）']], '');
     main.appendChild(el('<p>渲染器：</p>'));
     opts.forEach(([v, t]) => {
       const b = el('<button class="tab" style="display:block;margin:6px 0">' + (v === saved ? '✔ ' : '') + esc(t) + '</button>');

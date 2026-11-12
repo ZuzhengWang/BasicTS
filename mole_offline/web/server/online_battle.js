@@ -244,10 +244,22 @@
   function tryResolve(c, b) {
     if (controlled(b).every(a => b.cmds[a.petID])) { const cmds = b.cmds; b.cmds = {}; resolveRound(c, b, cmds); }
   }
+  // Client rule (BattleUIManager.beginUserOperation): when the own side has no main pet avatar on the field, the
+  // role is put into the action queue twice and sends two commands per round. Before v0.6.8 the server resolved the
+  // round on the first one and took the second for the next round, so from then on every result arrived while the
+  // previous round was still being played (HP dropped before the attack was shown, animations were cut off).
+  const roleActsTwice = (b) => !b.players.some(a => a.petState === PS.IN_BATTLE && !a.knockedOff && !a.captured);
+  function setRoleCmd(b, cmd) {
+    if (!roleActsTwice(b) || !b.players[0] || b.players[0].hp <= 0) { b.cmds[0] = cmd; b.roleQ = []; return true; }
+    (b.roleQ = b.roleQ || []).push(cmd);
+    if (b.roleQ.length < 2) return false;
+    b.cmds[0] = b.roleQ[0]; b.cmds.role2 = b.roleQ[1]; b.roleQ = [];
+    return true;
+  }
   function roleCmd(c, b, cmd) {
     flushSync(c, b, 'command');
     c.push(1313, new ByteWriter().u32(c.uid).u32(0));
-    b.cmds[0] = cmd; tryResolve(c, b);
+    if (setRoleCmd(b, cmd)) tryResolve(c, b);
   }
   // pending full sync (1315) after a pet was called in: sent after the round's playback, or at the latest
   // when the first command of the next round arrives
@@ -273,7 +285,7 @@
         : { auto: true, actionID: petID ? ACT.PET_ATTACK : ACT.ATTACK, side: 1, pos: -1 };
     }
     LOG('round cmd', petID ? 'pet ' + petID : 'role', actionID, 'side', side, 'pos', pos, 'lv', level);
-    b.cmds[petID] = cmd;
+    if (petID) b.cmds[petID] = cmd; else if (!setRoleCmd(b, cmd)) return;   // waiting for the role's second command
     tryResolve(c, b);
   });
   // 1309 BATTLE_ROUND_USE_ITEM: side, posIdx, itemID
@@ -483,6 +495,7 @@
 
   // monster AI: SpecSkill by weight (APPROX 35% of turns), otherwise a normal attack on a random player
   function monsterCmd(m) {
+    if (M.debugMonsterSkill) return { actionID: M.debugMonsterSkill, level: 1, side: 0, pos: -1 };   // tests only
     // SpecSkill by weight whenever one is usable (APPROX). A kill by a skill without knock-down/knock-off phases is turned
     // into a normal attack by markKills, so every usable skill is allowed here.
     if (m.spec.length) {
@@ -550,16 +563,21 @@
     if (rc && rc.actionID === ACT.CALL_PET && role.hp > 0) { acts.push({ actor: role, loops: callPet(c, b, role, rc.petID) }); rc.done = true; }
     const order = alive(b.players.concat(b.monsters)).sort((x, y) => (y.speed + Math.random() * 5) - (x.speed + Math.random() * 5));
     b.players.forEach(a => { const k = cmds[a.petID]; if (k && (k.actionID === ACT.DEFEND || k.actionID === ACT.PET_DEFEND)) defending.add(a); });
+    if (cmds.role2) { const i = order.indexOf(role); if (i >= 0) order.splice(i + 1, 0, role); }   // no main pet: the role acts twice
+    let roleTurns = 0;
     for (const a of order) {
       if (a.hp <= 0 || (a.side === 0 && !b.players.includes(a))) continue;
       if (a.petState === PS.AIDE_PET && b.aidesAway) continue;
-      if (statusTick(a)) {   // asleep: no action this round (the poison/curse loss is still shown)
+      const second = a === role && roleTurns++ > 0;
+      if (second && a._slept) continue;
+      if (!second && (a._slept = statusTick(a))) {   // asleep: no action this round (the poison/curse loss is still shown)
         acts.push({ actor: a, loops: [{ atkType: a.isRole ? ACT.NONE : ACT.PET_NONE, target: a }] });
         continue;
       }
       if (a.side === 0) {
         if (a.petState === PS.AIDE_PET && b.aidesAway) continue;
-        let cmd = a.petState === PS.AIDE_PET ? autoCmd(a, b.monsters, b.players) : cmds[a.petID];
+        let cmd = a.petState === PS.AIDE_PET ? autoCmd(a, b.monsters, b.players) : (second ? cmds.role2 : cmds[a.petID]);
+        if (second && cmd && cmd.actionID === ACT.CALL_PET) cmd = { actionID: ACT.NONE };
         if (cmd && cmd.auto) cmd = autoCmd(a, b.monsters, b.players);
         if (a.isPet && a.petState === PS.IN_BATTLE && !cmd) continue;      // newly called pet waits a round
         cmd = cmd || { actionID: a.isPet ? ACT.PET_ATTACK : ACT.ATTACK, pos: -1 };
@@ -603,7 +621,8 @@
     const infos = [];
     acts.forEach((x, i) => {
       const tg = x.loops.map(l => l.target.userID + '_' + l.target.petID);
-      const multi = x.loops.length > 1 && new Set(tg).size === tg.length;
+      let off = false; try { off = localStorage.getItem('mole_aoe') === 'off'; } catch (e) { }   // 修改器「画面」: 群体技能逐个播放
+      const multi = !off && x.loops.length > 1 && new Set(tg).size === tg.length;
       if (multi) x.loops.forEach((l, k) => infos.push({ seq: i + 1, actor: x.actor, loops: [l], mp: k === 0 ? x.mp : 0 }));
       else infos.push({ seq: i + 1, actor: x.actor, loops: x.loops, mp: x.mp });
     });
