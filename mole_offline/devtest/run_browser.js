@@ -10,7 +10,7 @@ const { chromium } = require('playwright');
       console.log('[mem] ' + ((Date.now() - t0) / 1000).toFixed(0) + 's ' + out); } catch (e) { } }, +(process.env.MEMLOG) * 1000 || 5000).unref(); }
   if (process.env.THROTTLE) { const cdp = await pg.context().newCDPSession(pg); await cdp.send('Emulation.setCPUThrottlingRate', { rate: Number(process.env.THROTTLE) }); }
   const seen = [];
-  pg.on('console', m => { const t = m.text(); seen.push(t); console.log('[console]', t.slice(0, 600)); });
+  const T0 = Date.now(); pg.on('console', m => { const t = m.text(); seen.push(t); console.log((process.env.TSLOG ? ((Date.now() - T0) / 1000).toFixed(1) + 's ' : '') + '[console]', t.slice(0, 600)); });
   const waitFor = async (txt, ms) => { const t0 = Date.now(); let from = 0;
     while (Date.now() - t0 < ms) { if (seen.some(x => x.includes(txt))) return true; await pg.waitForTimeout(250); }
     console.log('[runner] TIMEOUT waiting for', txt); return false; };

@@ -269,4 +269,39 @@
     if (p.level > old) { p.hp = null; p.mp = null; recalcPet(p); syncSkillLevels(p); }
     return p.level - old;
   };
+
+  // ---- 精灵仓库 / 家园 (PetStorehouseShowModule). Pets with status 0 (仓库) live here; before v0.6.6 these commands
+  // were not handled, so a pet put back from the pet bag (1551 status 0) seemed to vanish.
+  // 1559 STORAGE_PET_LIST(startIndex, count, sortFlag) -> total, startIndex, count, PetStorehouseInfo*
+  //   PetStorehouseInfo: petID, type, race u8, name[16], level, location (10000 = list, 10001+ = grid slot, 16 per page)
+  on(1559, (c, rd) => {
+    const start = rd.left >= 4 ? rd.u32() : 0, cnt = rd.left >= 4 ? rd.u32() : 16, sort = rd.left >= 4 ? rd.u32() : 0;
+    const all = pets(c.role()).filter(p => p.status === ST.DEPOT || p.status === 0);
+    if (sort === 1) all.sort((a, b) => b.level - a.level); else if (sort === 2) all.sort((a, b) => a.typeID - b.typeID);
+    const part = all.slice(start, start + Math.max(1, cnt));
+    const w = new ByteWriter().u32(all.length).u32(start).u32(part.length);
+    part.forEach(p => w.u32(p.petid).u32(p.typeID).u8(p.race || 0).str(p.nick || '', 16).u32(p.level).u32(p.houseLoc || 10000));
+    c.reply(w);
+  });
+  // 1560 STORAGE_PET_LOCATION(petID, location, 0, 0): where the pet stands in the pet house
+  on(1560, (c, rd) => {
+    const id = rd.u32(), loc = rd.left >= 4 ? rd.u32() : 10000; const p = findPet(c.role(), id);
+    if (p) { p.houseLoc = loc; M.saveRole(); }
+    c.reply(new ByteWriter().u32(id).u32(loc));
+  });
+  // 1561 STORAGE_PET_REMOVE(petID): release (放生) a pet from the pet house
+  on(1561, (c, rd) => {
+    const id = rd.u32(); const r = c.role(); const p = findPet(r, id);
+    if (p && (p.status === 0)) { r.pets = pets(r).filter(x => x !== p); M.saveRole(); LOG('pet released', id); }
+    c.reply(new ByteWriter().u32(id));
+  });
+  // 1567 PET_GET_LIST_ALL(petType, startIndex, count) -> petType, total, curIndex, count, brief pet infos
+  on(1567, (c, rd) => {
+    const type = rd.u32(), start = rd.left >= 4 ? rd.u32() : 0, cnt = rd.left >= 4 ? rd.u32() : 3;
+    const all = pets(c.role()).filter(p => p.typeID === type); const part = all.slice(start, start + Math.max(1, cnt));
+    const w = new ByteWriter().u32(type).u32(all.length).u32(start).u32(part.length);
+    part.forEach(p => { recalcPet(p); w.u32(p.petid).str(p.nick || '', 16).u32(p.level).u32(p.hp).u32(p.hp_max).u32(p.mp).u32(p.mp_max).u32(p.injury_lv || 0)
+      .u16(p.physique).u16(p.strength).u16(p.endurance).u16(p.speed).u16(p.intelligence).u16(p.growValue || 0).u16(p.spirit & 0xffff).u16(p.resume & 0xffff); });
+    c.reply(w);
+  });
 })(window);
