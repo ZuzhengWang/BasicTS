@@ -58,8 +58,11 @@
       for (const it of k.getElementsByTagName('Item')) { const a = attrs(it); a.kind = ka; a.el = it; D.items[a.ID] = a; }
     }
     // battle actions/skills: Type (1 physical, 4 heal, 7 magic ...), TargetAmount, User
-    D.actions = {};
-    if (actions) for (const a of actions.getElementsByTagName('Action')) { const x = attrs(a); x.phases = Array.from(a.getElementsByTagName('Phase')).map(e => Number(e.getAttribute('ID'))); D.actions[x.ID] = x; }
+    D.actions = {}; D.actionVariants = {};
+    if (actions) for (const a of actions.getElementsByTagName('Action')) { const x = attrs(a); x.phases = Array.from(a.getElementsByTagName('Phase')).map(e => Number(e.getAttribute('ID')));
+      // one <Action> per weapon type for many skills (client key = ID*10 + weapon; Weapon -1 = every weapon)
+      (D.actionVariants[x.ID] = D.actionVariants[x.ID] || []).push(x);
+      if (!D.actions[x.ID]) D.actions[x.ID] = x; }
     D.beastDoc = beast; D.petDoc = pet; D.monsterDoc = monsters; D.skillDoc = skill;
     // pets / monsters (Pet.xml "Type" entries are monster/pet species)
     D.petTypes = {};

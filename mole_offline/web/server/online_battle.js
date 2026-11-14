@@ -23,9 +23,14 @@
   const ST2_KNOCK_DOWN = 2, ST2_RANGE_OUT = 4;
   // other state2 bits of a hit (module AvatarState): 16 defending, 32 dodged, 1024 critical (暴击)
   const ST2_DEFENSE = 16, ST2_AVOID = 32, ST2_BISHA = 1024;
+  // 8 INJURED (受击): the client plays the target's reaction and the skill's hit effect (phase 4 "被攻击" AcpEffect,
+  // ActionPlayBackProcessor.doResponsePhase1) only when this bit is set; heals and buffs need it too for their effect on
+  // the target. Before v0.6.9 it was never sent, so no skill showed its hit effect (only the caster's own effect).
+  // 2048 ITEM_USED: same for the effect of an item.
+  const ST2_INJURED = 8, ST2_ITEM_USED = 2048;
   function hitBits(r, t, defending) {
     let v = 0;
-    if (r.miss) v |= ST2_AVOID;
+    if (r.miss) v |= ST2_AVOID; else v |= ST2_INJURED;
     if (r.crit) v |= ST2_BISHA;
     if (defending && defending.has(t)) v |= ST2_DEFENSE;
     return v;
@@ -35,7 +40,7 @@
   // The client plays the fall (phase 3) / knock-off (phase 5) from the attacking action's phases
   // (BattleActionListConfig); 46 attack skills (e.g. 破魂 5501) have neither, so a kill by them left the target
   // standing with an empty HP bar. Such a killing hit is shown as the actor's normal attack.
-  const hasPhase = (id, ph) => { const a = D.actions[id]; return !a || !a.phases || a.phases.includes(ph); };
+  const hasPhase = (id, ph, actor) => { const a = (actor && M.actionFor && M.actionFor(actor, id)) || D.actions[id]; return !a || !a.phases || a.phases.includes(ph); };
   function markKills(loops, actor) {
     loops.forEach(l => {
       const t = l.target;
@@ -43,7 +48,7 @@
       if (t && (l.change_hp || 0) < 0 && t.hp <= 0 && !t.downShown) {
         t.downShown = true;
         const off = (l.state2 & ST2_BISHA) !== 0;
-        if (!hasPhase(l.atkType, off ? 5 : 3)) l.atkType = actor && actor.isRole ? ACT.ATTACK : ACT.PET_ATTACK;
+        if (!hasPhase(l.atkType, off ? 5 : 3, actor)) l.atkType = actor && actor.isRole ? ACT.ATTACK : ACT.PET_ATTACK;
         if (off) t.knockedOff = true;
         l.state2 = (l.state2 || 0) | (off ? ST2_RANGE_OUT : ST2_KNOCK_DOWN);
       }
@@ -215,9 +220,9 @@
 
   // APPROX damage: physical = max(5% atk, atk - 0.6*def) * [0.9, 1.1], x1.5 on crit, x0.5 when defending.
   function damage(att, tgt, defending) {
-    if (Math.random() * 100 > Math.max(30, att.hit - tgt.dodge)) return { miss: true, dmg: 0 };
+    if (!M.debugNoDamage && Math.random() * 100 > Math.max(30, att.hit - tgt.dodge)) return { miss: true, dmg: 0 };
     let d = Math.max(att.atk * 0.05, att.atk - tgt.def * 0.6) * rand(0.9, 1.1);
-    const crit = Math.random() * 100 < att.crit;
+    const crit = !M.debugNoDamage && Math.random() * 100 < att.crit;
     if (crit) d *= 1.5;
     if (defending) d *= 0.5;
     return { dmg: Math.max(1, Math.round(d)), crit };
@@ -326,7 +331,7 @@
     if (!sk.status || !t || t.hp <= 0) return false;
     const st = STATUS.find(x => x.k === sk.status);
     const p = Math.max(5, sk.statusChance - resist(t, st));
-    if (Math.random() * 100 >= p) return false;
+    if (!M.debugNoDamage && Math.random() * 100 >= p) return false;
     t.status = t.status || {}; t.status[st.k] = Math.max(t.status[st.k] || 0, sk.statusRounds);
     LOG('status', t.nick, st.k, sk.statusRounds + ' rounds');
     return true;
@@ -344,6 +349,7 @@
   // damage / healing taken, with 石化 halving and 昏睡 waking up
   function hurt(t, dmg) {
     if (has(t, 'stone')) dmg = Math.ceil(dmg / 2);
+    if (M.debugNoDamage) dmg = Math.min(dmg, 1);            // tests only: nobody dies, many skills can be watched in one battle
     if (dmg > 0 && has(t, 'sleep')) delete t.status.sleep;
     t.hp = Math.max(0, t.hp - dmg);
     return dmg;
@@ -378,7 +384,7 @@
   }
   M.skillOf = skillOf;
   function magicDamage(att, tgt, sk) {
-    if (Math.random() * 100 > Math.max(40, att.hit - tgt.dodge / 2)) return { miss: true, dmg: 0 };
+    if (!M.debugNoDamage && Math.random() * 100 > Math.max(40, att.hit - tgt.dodge / 2)) return { miss: true, dmg: 0 };
     const d = (sk.base + att.matk * 0.4 - tgt.mdef * 0.3) * rand(0.9, 1.1);
     return { dmg: Math.max(1, Math.round(d)) };
   }
@@ -402,8 +408,8 @@
       return [{ atkType: a.isRole ? ACT.ATTACK : ACT.PET_ATTACK, target: t, change_hp: -r.dmg, state2: hitBits(r, t, defending) }];
     }
     const first = cmd.side === (a.side === 0 ? 1 : 0) ? foes.find(m => m.posIdx === cmd.pos) : (cmd.side === a.side ? friends.find(m => m.posIdx === cmd.pos) : null);
-    if (sk && a.mp >= sk.mp) {
-      a.mp -= sk.mp; a._mpCost = sk.mp;
+    if (sk && (a.mp >= sk.mp || M.debugNoDamage)) {
+      if (!M.debugNoDamage) { a.mp -= sk.mp; a._mpCost = sk.mp; }
       LOG('skill', a.nick, (M.skillInfo(sk.id) || {}).name, 'Lv' + lv, 'type', sk.type, 'mp -' + sk.mp);
       if (sk.revive) {      // revive (复活) a knocked-down ally that was not knocked off the field
         const down = friends.filter(f => f.hp <= 0 && !f.knockedOff && !f.captured);
@@ -414,20 +420,20 @@
       if (sk.type === 4) {   // HP recovery on own side
         const tgts = targetsFor(friends, first && first.side === a.side ? first : a, sk.amount);
         return tgts.map((t, i) => { const h = Math.max(0, Math.min(healAmt(t, sk.heal), t.hp_max - t.hp)); t.hp += h;
-          return { atkType: sk.id, level: lv, target: t, change_hp: h }; });
+          return { atkType: sk.id, level: lv, target: t, change_hp: h, state2: ST2_INJURED }; });
       }
       if ([3, 5, 9, 17].includes(sk.type)) {   // defensive skills: treated as defending this round
         defending.add(a);
-        return [{ atkType: sk.id, level: lv, target: a }];
+        return [{ atkType: sk.id, level: lv, target: a, state2: ST2_INJURED }];
       }
       const tgts = targetsFor(foes, first && first.side !== a.side ? first : null, sk.amount);
       if (sk.type === 2) {   // Mp攻击 (e.g. 破魂): drains the target's MP, no HP damage (percentage from Skill.xml text)
         const pc = (sk.desc.match(/(\d+)%/) ? Number(sk.desc.match(/(\d+)%/)[1]) : 4 + 2 * lv) / 100;
         return tgts.map(t => { const d = Math.min(t.mp, Math.max(1, Math.round(t.mp * pc + a.atk * 0.05)));
-          t.mp -= d; return { atkType: sk.id, level: lv, target: t, change_mp: -d }; });
+          t.mp -= d; return { atkType: sk.id, level: lv, target: t, change_mp: -d, state2: ST2_INJURED }; });
       }
       if (sk.type === 8) {   // 异常状态魔法: no HP damage, applies the status (chance from level, minus the target's 抵抗)
-        return tgts.map(t => { const ok = tryStatus(t, sk); return { atkType: sk.id, level: lv, target: t, state2: ok ? 0 : 32 }; });
+        return tgts.map(t => { const ok = !sk.status || tryStatus(t, sk); return { atkType: sk.id, level: lv, target: t, state2: ok ? ST2_INJURED : ST2_AVOID }; });
       }
       return tgts.map((t, i) => {
         const r = (sk.type === 7 || sk.type === 6) ? magicDamage(a, t, sk)
@@ -465,13 +471,17 @@
   // (BattleActionListConfig Weapon/Shield). Choice: revive a fallen ally > heal an ally under 40% HP > status magic on a foe
   // that does not have that status yet (20%, or always when it is the only kind left) > a random attack skill >
   // normal attack only when no skill is usable.
+  // the <Action> entry the client will use for this avatar (BattleActionListConfig.getAction(id, weaponType)); null =
+  // the skill cannot be played with the avatar's weapon (the client would skip the whole action)
+  function actionFor(a, id) {
+    const w = a.isRole ? (a.weaponType || 0) : 0;
+    return (D.actionVariants[id] || []).find(x => Number(x.Weapon) === -1 || Number(x.Weapon) === w) || null;
+  }
+  M.actionFor = actionFor;
   function usableSkill(a, s) {
-    const act = D.actions[s.id]; const sk = skillOf(s.id, s.lv || 1);
-    if (!act || !sk || act.Property === '1' || a.mp < sk.mp) return null;
-    if (a.isRole) {
-      const w = Number(act.Weapon); if (!isNaN(w) && w !== -1 && w !== (a.weaponType || 0)) return null;
-      const sh = Number(act.Shield || 0); if ((sh === 1 && !a.hasShield) || (sh === 2 && a.hasShield)) return null;
-    }
+    const act = actionFor(a, s.id); const sk = skillOf(s.id, s.lv || 1);
+    if (!act || !sk || act.Property === '1' || (a.mp < sk.mp && !M.debugNoDamage)) return null;
+    if (a.isRole) { const sh = Number(act.Shield || 0); if ((sh === 1 && !a.hasShield) || (sh === 2 && a.hasShield)) return null; }
     return sk;
   }
   function autoCmd(a, foes, friends) {
@@ -495,7 +505,10 @@
 
   // monster AI: SpecSkill by weight (APPROX 35% of turns), otherwise a normal attack on a random player
   function monsterCmd(m) {
-    if (M.debugMonsterSkill) return { actionID: M.debugMonsterSkill, level: 1, side: 0, pos: -1 };   // tests only
+    if (M.debugMonsterSkill) {   // tests only: one id, or a list used in turn
+      const L = [].concat(M.debugMonsterSkill); m._dbgK = (m._dbgK || 0) + 1;
+      return { actionID: L[(m._dbgK - 1) % L.length], level: 1, side: 0, pos: -1 };
+    }
     // SpecSkill by weight whenever one is usable (APPROX). A kill by a skill without knock-down/knock-off phases is turned
     // into a normal attack by markKills, so every usable skill is allowed here.
     if (m.spec.length) {
@@ -579,6 +592,9 @@
         let cmd = a.petState === PS.AIDE_PET ? autoCmd(a, b.monsters, b.players) : (second ? cmds.role2 : cmds[a.petID]);
         if (second && cmd && cmd.actionID === ACT.CALL_PET) cmd = { actionID: ACT.NONE };
         if (cmd && cmd.auto) cmd = autoCmd(a, b.monsters, b.players);
+        // tests only: the role / the main pet uses the listed skills in turn
+        const dbg = a.isRole ? M.debugRoleSkills : (a.petState === PS.IN_BATTLE ? M.debugPetSkills : null);
+        if (dbg && dbg.length && cmd) { b._dbgI = b._dbgI || {}; const k = b._dbgI[a.petID] = (b._dbgI[a.petID] || 0) + 1; cmd = { actionID: dbg[(k - 1) % dbg.length], level: M.debugSkillLevel || 1, side: 1, pos: -1 }; }
         if (a.isPet && a.petState === PS.IN_BATTLE && !cmd) continue;      // newly called pet waits a round
         cmd = cmd || { actionID: a.isPet ? ACT.PET_ATTACK : ACT.ATTACK, pos: -1 };
         if (cmd.done) continue;
@@ -599,7 +615,7 @@
             const hp = Math.max(0, Math.min(Number(it.HpUp || 0), tgt.hp_max - tgt.hp));
             const mp = Math.max(0, Math.min(Number(it.MpUp || 0), tgt.mp_max - tgt.mp));
             tgt.hp += hp; tgt.mp += mp;
-            acts.push({ actor: a, loops: [{ atkType: ACT.ITEM, target: tgt, change_hp: hp, change_mp: mp, useItemID: cmd.itemID }] });
+            acts.push({ actor: a, loops: [{ atkType: ACT.ITEM, target: tgt, change_hp: hp, change_mp: mp, useItemID: cmd.itemID, state2: ST2_ITEM_USED }] });
           } else acts.push({ actor: a, loops: [{ atkType: ACT.NONE, target: a }] });
         } else if ([ACT.DEFEND, ACT.PET_DEFEND, ACT.NONE, ACT.PET_NONE].includes(cmd.actionID)) {
           acts.push({ actor: a, loops: [{ atkType: cmd.actionID, target: a }] });

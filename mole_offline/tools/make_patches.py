@@ -158,6 +158,39 @@ for n_, abc_, p_, h_ in abcs_:
     print('patched', rel, 'SuitPart.show (frameHandle call)')
     break
 
+# 9. battle.swf AvatarBody.frameHandle / subFrameHandle: when the role's body changes to another action (e.g. back to
+#    the wait pose after casting), FighterBody.subFrameHandle - which moves the outfit parts onto the new action clip -
+#    is only registered as the frame script of the new clip's frames. Under Ruffle the script of frame 1 does not run
+#    right away, so for one or two ticks the role stood there bare with the outfit still on the old clip (and its parts
+#    in a corner). frameHandle now calls subFrameHandle() itself once, in "attach only" mode: the marker value 30000 in
+#    _subFrameHandleTargetFrame makes AvatarBody.subFrameHandle return at once, so only FighterBody's own part (the
+#    outfit) runs and no ATTACK_ON / ACTION_PLAY_DONE event is sent twice. Pets and monsters have no override: no-op.
+LFH = 'com.mole2.module.battle.body::AvatarBody/frameHandle'
+LSF = 'com.mole2.module.battle.body::AvatarBody/subFrameHandle'
+body_, abcs_ = S.load(dst)
+for n_, abc_, p_, h_ in abcs_:
+    try:
+        mfh = P.find_method(abc_, LFH); msf = P.find_method(abc_, LSF)
+    except KeyError:
+        continue
+    cfh = abc_.methods[mfh]['body']['code']; csf = abc_.methods[msf]['body']['code']
+    ifh = S.disasm(abc_, cfh); isf = S.disasm(abc_, csf)
+    tgt = [u30at(csf, a + 1) for a, nm, x in isf if nm == 'setproperty' and str(x[0]).endswith('_subFrameHandleTargetFrame')][-1]
+    sfh = [u30at(cfh, a + 1) for a, nm, x in ifh if nm == 'getproperty' and str(x[0]).endswith('subFrameHandle')][0]
+    # (A) subFrameHandle: if (_subFrameHandleTargetFrame == 30000) return;
+    at_a = [a for a, nm, x in isf if nm == 'pushscope'][0] + 1
+    MARK = b'\x25' + P.u30(30000)
+    code_a = b'\xd0\x66' + P.u30(tgt) + MARK + b'\x14\x01\x00\x00' + b'\x47'
+    P.patch_swf(dst, dst, LSF, [(at_a, 0, code_a)], extra_stack=2)
+    # (B) frameHandle: before the final "_frameHandleTargetFrame = 0": marker, subFrameHandle(), marker off
+    k = [i for i, (a, nm, x) in enumerate(ifh) if nm == 'setproperty' and str(x[0]).endswith('_frameHandleTargetFrame')][-1]
+    at_b = ifh[k - 2][0]
+    assert ifh[k - 2][1] == 'getlocal0' and ifh[k + 1][1] == 'returnvoid'
+    code_b = (b'\xd0' + MARK + b'\x61' + P.u30(tgt) + b'\xd0\x4f' + P.u30(sfh) + b'\x00' + b'\xd0\x24\x00\x61' + P.u30(tgt))
+    P.patch_swf(dst, dst, LFH, [(at_b, 0, code_b)], extra_stack=2)
+    print('patched', rel, 'AvatarBody.frameHandle (outfit attached at once on action change)')
+    break
+
 # 8. SystemFrameRateManager.onStageEnterFrame: when the measured frame rate is under 22 / 17 / 10 fps the client sets
 #    spillFrames = 1 / 2 / 3, and battle animations (AvatarBody, effects, tweens) then skip that many frames per tick.
 #    The rate is re-measured on every frame, so the skip count also jumps around. Under Ruffle on a phone the rate is
